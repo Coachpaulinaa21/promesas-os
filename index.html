@@ -257,6 +257,9 @@ const DEFDATA = {
 // ======================================================
 let data = JSON.parse(JSON.stringify(DEFDATA));
 data._doneIds = new Set();  // IDs de tareas completadas: status/global/done
+
+// Estado de filtros de tareas — vive fuera del DOM para sobrevivir re-renders
+const taskFilters = { resp: 'todos', status: 'todos' };
 let currentTab = 'dashboard';
 let unsubscribers = [];
 let focoDebounce = null;
@@ -862,34 +865,33 @@ function taskPri(t){
 }
 const TASK_PRI_BADGE = { Alta:'bo', Media:'bg2', Baja:'bgray', Normal:'bgray', Urgente:'br' };
 
+// Funciones de filtro de tareas — leen y persisten estado en taskFilters (fuera del DOM)
+window.setTaskFilter = function(key, val){
+  taskFilters[key] = val;
+  renderContent();
+};
+
 function renderTasks(){
-  let fResp='todos', fStatus='todos';
-  try{fResp   = document.getElementById('t-resp-f')?.value   || 'todos';}catch(e){}
-  try{fStatus = document.getElementById('t-status-f')?.value || 'todos';}catch(e){}
+  // Siempre filtrar desde la fuente completa data.tasks (nunca mutar)
+  const allTasks = data.tasks;
 
-  // Usar TODAS las tareas de Firestore, sin excluir ninguna
-  let tasks = [...data.tasks];
-
-  // Filtro responsable
-  if(fResp !== 'todos') tasks = tasks.filter(t => taskResp(t) === fResp);
-
-  // Filtro estado
-  if(fStatus === 'Pendiente') tasks = tasks.filter(t => !taskEsLista(t));
-  else if(fStatus === 'Lista') tasks = tasks.filter(t =>  taskEsLista(t));
-
-  // Orden: pendientes primero, luego listas; dentro de cada grupo por orden natural
-  tasks.sort((a, b) => {
-    const aL = taskEsLista(a) ? 1 : 0;
-    const bL = taskEsLista(b) ? 1 : 0;
-    return aL - bL;
+  // Aplicar filtros desde taskFilters (no desde el DOM)
+  let tasks = allTasks.filter(t => {
+    if(taskFilters.resp !== 'todos' && taskResp(t) !== taskFilters.resp) return false;
+    if(taskFilters.status === 'Pendiente' && taskEsLista(t))  return false;
+    if(taskFilters.status === 'Lista'     && !taskEsLista(t)) return false;
+    return true;
   });
 
-  const totalTasks   = data.tasks.length;
-  const pendingCount = data.tasks.filter(t => !taskEsLista(t)).length;
-  const doneCount    = data.tasks.filter(t =>  taskEsLista(t)).length;
+  // Orden: pendientes primero, listas al final
+  tasks.sort((a, b) => (taskEsLista(a)?1:0) - (taskEsLista(b)?1:0));
 
-  // Responsables únicos reales presentes en Firestore
-  const responsables = [...new Set(data.tasks.map(t => taskResp(t)).filter(Boolean))].sort();
+  const totalTasks   = allTasks.length;
+  const pendingCount = allTasks.filter(t => !taskEsLista(t)).length;
+  const doneCount    = allTasks.filter(t =>  taskEsLista(t)).length;
+
+  // Responsables únicos desde el dataset completo (no el filtrado)
+  const responsables = [...new Set(allTasks.map(t => taskResp(t)).filter(Boolean))].sort();
 
   return`
 <div class="section-title">
@@ -901,14 +903,14 @@ function renderTasks(){
   Visor estratégico — sincronizado en tiempo real desde <strong style="color:var(--text);margin:0 3px">promesas-tareas</strong> · <strong style="color:var(--text);margin:0 3px">${totalTasks}</strong> tareas · <strong style="color:var(--accent);margin:0 3px">${pendingCount}</strong> pendientes · <strong style="color:var(--green);margin:0 3px">${doneCount}</strong> listas
 </div>
 <div class="filter-bar">
-  <select class="fsel" id="t-resp-f" onchange="renderContent()">
-    <option value="todos">Todos</option>
-    ${responsables.map(r=>`<option value="${r}">${r}</option>`).join('')}
+  <select class="fsel" id="t-resp-f" onchange="setTaskFilter('resp',this.value)">
+    <option value="todos" ${taskFilters.resp==='todos'?'selected':''}>Todos</option>
+    ${responsables.map(r=>`<option value="${r}" ${taskFilters.resp===r?'selected':''}>${r}</option>`).join('')}
   </select>
-  <select class="fsel" id="t-status-f" onchange="renderContent()">
-    <option value="todos">Todos los estados</option>
-    <option value="Pendiente">Pendiente</option>
-    <option value="Lista">Lista</option>
+  <select class="fsel" id="t-status-f" onchange="setTaskFilter('status',this.value)">
+    <option value="todos"     ${taskFilters.status==='todos'    ?'selected':''}>Todos los estados</option>
+    <option value="Pendiente" ${taskFilters.status==='Pendiente'?'selected':''}>Pendiente</option>
+    <option value="Lista"     ${taskFilters.status==='Lista'    ?'selected':''}>Lista</option>
   </select>
   <span style="font-size:12px;color:var(--muted);margin-left:4px">${tasks.length} tareas mostradas</span>
 </div>
