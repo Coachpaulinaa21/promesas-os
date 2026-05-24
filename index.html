@@ -139,9 +139,11 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // ======================================================
-// FIREBASE INIT
+// FIREBASE INIT — DOS PROYECTOS
 // ======================================================
-const firebaseConfig = {
+
+// 1) Promesas OS — sistema principal (pipeline, proyectos, contactos, financiero, alianzas, cerebro)
+const firebaseConfigMain = {
   apiKey: "AIzaSyD1TM0IDrzmx3KURZ1Fx1x5Gte537E_21Y",
   authDomain: "promesas-control-center.firebaseapp.com",
   projectId: "promesas-control-center",
@@ -149,8 +151,20 @@ const firebaseConfig = {
   messagingSenderId: "232276553601",
   appId: "1:232276553601:web:7e77a19f4a6aa4044bc280"
 };
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+const appMain = initializeApp(firebaseConfigMain, "main");
+const db = getFirestore(appMain);
+
+// 2) Tareas Promesas — fuente única de verdad para tareas (solo lectura)
+const firebaseConfigTasks = {
+  apiKey: "AIzaSyAMFVVCAekTAqRaerBpuifUByzBOVqTd5I",
+  authDomain: "promesas-tareas.firebaseapp.com",
+  projectId: "promesas-tareas",
+  storageBucket: "promesas-tareas.firebasestorage.app",
+  messagingSenderId: "652607730000",
+  appId: "1:652607730000:web:0b5fcdc58845f12f423c55"
+};
+const appTasks = initializeApp(firebaseConfigTasks, "tasks");
+const dbTasks = getFirestore(appTasks);
 
 // ======================================================
 // DEFAULT DATA
@@ -284,14 +298,15 @@ function syncDot(state){
 // ======================================================
 // FIRESTORE HELPERS
 // ======================================================
+// Colecciones del proyecto principal (promesas-control-center)
 const COL = {
   pipeline:'pipeline',
   projects:'projects',
-  tasks:'tasks',
   contacts:'contacts',
   financial:'financial',
   alliances:'alliances'
 };
+// tasks viene exclusivamente de dbTasks (promesas-tareas)
 
 function stripUndefined(obj){
   return JSON.parse(JSON.stringify(obj));
@@ -339,12 +354,22 @@ async function seedIfEmpty(){
 // LOAD FROM FIRESTORE (initial)
 // ======================================================
 async function loadFromFirestore(){
+  // Colecciones del sistema principal (sin tasks)
   for(const col of Object.keys(COL)){
     const snap = await getDocs(collection(db, col));
     data[col] = [];
     snap.forEach(d => data[col].push({...d.data(), _fsId: d.id}));
-    // ensure numeric ids
     data[col].forEach(item => { if(typeof item.id === 'string') item.id = parseInt(item.id)||item.id; });
+  }
+
+  // Tareas desde proyecto secundario (promesas-tareas) — solo lectura
+  try {
+    const tasksSnap = await getDocs(collection(dbTasks, 'tasks'));
+    data.tasks = [];
+    tasksSnap.forEach(d => data.tasks.push({...d.data(), _fsId: d.id}));
+  } catch(e) {
+    console.warn('No se pudo cargar tasks desde promesas-tareas:', e.message);
+    data.tasks = [];
   }
 
   const brainSnap = await getDoc(doc(db,'meta','brain'));
@@ -365,6 +390,7 @@ function attachListeners(){
   unsubscribers.forEach(u => u());
   unsubscribers = [];
 
+  // Listeners del sistema principal (sin tasks)
   for(const col of Object.keys(COL)){
     const unsub = onSnapshot(collection(db, col), snap => {
       if(!initialized) return;
@@ -378,6 +404,15 @@ function attachListeners(){
     }, err => console.error('Listener error', col, err));
     unsubscribers.push(unsub);
   }
+
+  // Listener exclusivo de tareas desde promesas-tareas (solo lectura)
+  const unsubTasks = onSnapshot(collection(dbTasks, 'tasks'), snap => {
+    if(!initialized) return;
+    data.tasks = [];
+    snap.forEach(d => data.tasks.push({...d.data(), _fsId: d.id}));
+    renderContent();
+  }, err => console.warn('Listener tasks error:', err.message));
+  unsubscribers.push(unsubTasks);
 
   // brain listener
   const unsubBrain = onSnapshot(doc(db,'meta','brain'), snap => {
@@ -459,7 +494,6 @@ window.exportData = function(){
   const exportObj = {
     pipeline: data.pipeline.map(x=>{const c={...x};delete c._fsId;return c;}),
     projects: data.projects.map(x=>{const c={...x};delete c._fsId;return c;}),
-    tasks: data.tasks.map(x=>{const c={...x};delete c._fsId;return c;}),
     contacts: data.contacts.map(x=>{const c={...x};delete c._fsId;return c;}),
     financial: data.financial.map(x=>{const c={...x};delete c._fsId;return c;}),
     alliances: data.alliances.map(x=>{const c={...x};delete c._fsId;return c;}),
@@ -483,7 +517,6 @@ window.importData = async function(e){
       for(const [col, arr] of Object.entries({
         pipeline:imported.pipeline||[],
         projects:imported.projects||[],
-        tasks:imported.tasks||[],
         contacts:imported.contacts||[],
         financial:imported.financial||[],
         alliances:imported.alliances||[]
