@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Promesas OS — Comando Central</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<style>
+:root{--bg:#070810;--surface:#0C0E1A;--card:#111425;--elevated:#181B2E;--border:rgba(255,255,255,0.07);--borderS:rgba(255,255,255,0.13);--accent:#FF6B2B;--gold:#FFB547;--text:#E8E9F5;--muted:#7880A8;--dim:#2E3358;--green:#22C87F;--red:#FF4D5E;--blue:#4B9FFF;--purple:#9B7BFF}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px}
+#topbar{position:sticky;top:0;z-index:200;background:var(--surface);border-bottom:1px solid var(--border);padding:0 1.25rem;display:flex;align-items:center;height:54px;gap:0}
+#logo{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--accent);letter-spacing:-0.5px;margin-right:1.5rem;white-space:nowrap;flex-shrink:0}
+#logo span{color:var(--text)}
+.nav-tabs{display:flex;gap:0;overflow-x:auto;scrollbar-width:none;flex:1}
+.nav-tabs::-webkit-scrollbar{display:none}
+.ntab{padding:0 0.9rem;height:54px;display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:color .15s,border-color .15s}
+.ntab:hover{color:var(--text)}
+.ntab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.ntab .ti{font-size:15px}
+.topbar-actions{display:flex;gap:6px;margin-left:auto;flex-shrink:0}
+#main{padding:1.5rem;max-width:1400px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.25rem}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.ctitle{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text)}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:1.25rem}
+.stat-card{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;padding:1rem 1.1rem}
+.stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
+.stat-value{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--text);line-height:1}
+.stat-sub{font-size:11px;color:var(--muted);margin-top:5px}
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
+.br{background:rgba(255,77,94,.15);color:#FF7A87}
+.bo{background:rgba(255,107,43,.15);color:#FF8C5C}
+.bg2{background:rgba(255,181,71,.15);color:#FFB547}
+.bgreen{background:rgba(34,200,127,.15);color:#22C87F}
+.bblue{background:rgba(75,159,255,.15);color:#4B9FFF}
+.bpurple{background:rgba(155,123,255,.15);color:#B8A0FF}
+.bgray{background:rgba(255,255,255,.08);color:var(--muted)}
+.btn{padding:7px 13px;border-radius:8px;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:#ff8050}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--borderS)}
+.btn-ghost:hover{color:var(--text);background:var(--elevated)}
+.btn-sm{padding:4px 10px;font-size:12px;border-radius:6px}
+.btn-icon{padding:5px;width:28px;height:28px;justify-content:center;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted)}
+.btn-icon:hover{color:var(--text);border-color:var(--borderS);background:var(--elevated)}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:7px 10px;font-size:10px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)}
+td{padding:9px 10px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.015)}
+.kanban-scroll{display:flex;gap:10px;overflow-x:auto;padding-bottom:1rem}
+.kanban-scroll::-webkit-scrollbar{height:4px}
+.kanban-scroll::-webkit-scrollbar-thumb{background:var(--dim);border-radius:2px}
+.kcol{flex:0 0 200px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.9rem}
+.kcol-header{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.kcard{background:var(--elevated);border:1px solid var(--border);border-radius:8px;padding:9px;margin-bottom:7px;cursor:pointer;transition:border-color .15s}
+.kcard:hover{border-color:var(--accent)}
+.kcard-title{font-size:12px;font-weight:500;color:var(--text);margin-bottom:5px;line-height:1.3}
+.kcard-val{font-size:13px;font-weight:700;color:var(--gold)}
+.kcard-meta{font-size:11px;color:var(--muted);margin-top:5px}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--card);border:1px solid var(--borderS);border-radius:16px;width:95%;max-width:540px;max-height:90vh;overflow-y:auto;padding:1.5rem}
+.modal-title{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;margin-bottom:1.25rem;color:var(--text)}
+.fg{margin-bottom:.9rem}
+.fl{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;font-weight:500}
+.fc{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--borderS);background:var(--elevated);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;transition:border-color .15s}
+.fc:focus{border-color:var(--accent)}
+select.fc option{background:var(--elevated)}
+textarea.fc{resize:vertical;min-height:70px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem;flex-wrap:wrap}
+.filter-bar{display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;align-items:center}
+.fsel{padding:6px 10px;border-radius:8px;border:1px solid var(--borderS);background:var(--elevated);color:var(--text);font-size:12px;font-family:'DM Sans',sans-serif}
+.prog-wrap{height:4px;background:var(--elevated);border-radius:2px;overflow:hidden;width:80px}
+.prog-fill{height:100%;border-radius:2px;background:var(--accent)}
+.grid-auto{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.section-title{font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between}
+.empty-state{text-align:center;padding:2.5rem 1rem;color:var(--muted)}
+.empty-state .ti{font-size:34px;margin-bottom:8px;display:block}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+.dot-r{background:var(--red)}.dot-o{background:var(--accent)}.dot-g{background:var(--green)}.dot-gr{background:var(--muted)}
+.avatar{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+.foco-box{background:var(--elevated);border:1px dashed var(--borderS);border-radius:10px;padding:.9rem}
+.foco-textarea{width:100%;background:transparent;border:none;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;resize:none;outline:none;line-height:1.6}
+.brain-item{padding:9px 11px;background:var(--elevated);border-radius:8px;margin-bottom:6px;font-size:13px;display:flex;justify-content:space-between;align-items:start;gap:8px;line-height:1.5}
+.brain-input{width:100%;padding:8px 10px;border-radius:8px;border:1px dashed var(--borderS);background:transparent;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;margin-bottom:8px}
+.brain-input::placeholder{color:var(--muted)}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--dim);border-radius:2px}
+@media(max-width:768px){#main{padding:1rem}.form-row{grid-template-columns:1fr}.grid-2{grid-template-columns:1fr}.ntab{padding:0 .7rem;font-size:11px}#logo{margin-right:.8rem}}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="logo">P<span>OS</span></div>
+  <div class="nav-tabs" id="nav-tabs"></div>
+  <div class="topbar-actions">
+    <button class="btn btn-ghost btn-sm" onclick="exportData()"><i class="ti ti-download"></i><span class="hide-sm"> Exportar</span></button>
+    <label class="btn btn-ghost btn-sm" style="cursor:pointer"><i class="ti ti-upload"></i><span class="hide-sm"> Importar</span><input type="file" accept=".json" style="display:none" onchange="importData(event)"></label>
+  </div>
+</div>
+<div id="main"><div id="content"></div></div>
+<div id="modal-overlay" class="modal-overlay" onclick="overlayClick(event)">
+  <div id="modal-box" class="modal" onclick="event.stopPropagation()"></div>
+</div>
+
+<script>
+// ======================================================
+// DATA
+// ======================================================
+const DEFDATA = {
+  projects:[
+    {id:1,name:'Club Promesas de Antioquia',area:'Promesas',status:'Activo',priority:'Alta',owner:'Juliana',progress:50,dueDate:'2025-12-31',notes:'Operación regular. Base de datos colegios en curso.'},
+    {id:2,name:'Copa Internacional Promesas',area:'Promesas',status:'Urgente',priority:'Alta',owner:'Juliana',progress:40,dueDate:'2025-10-31',notes:'Evento principal del año. Inscripciones + patrocinios + operación.'},
+    {id:3,name:'Sede Marinilla',area:'Promesas',status:'Activo',priority:'Alta',owner:'Juliana',progress:25,dueDate:'2025-08-31',notes:'Nueva sede. Visita pendiente con Carlos UPB.'},
+    {id:4,name:'Gira Panamá',area:'Promesas',status:'Urgente',priority:'Alta',owner:'Juliana',progress:30,dueDate:'2025-07-31',notes:'Reunión recaudo pendiente. Reestructurar precios.'},
+    {id:5,name:'Ecommerce + Merch',area:'Ecommerce',status:'Activo',priority:'Media',owner:'Melissa',progress:20,dueDate:'2025-09-30',notes:'2000 camisetas NBA próximas a llegar.'},
+    {id:6,name:'Vivoon — Referidos y Uniformes',area:'Vivoon',status:'Urgente',priority:'Alta',owner:'Juliana',progress:60,dueDate:'2025-06-30',notes:'Convenio firmándose. Proveedor UPB + Copa.'},
+    {id:7,name:'Edunova — Gerencia Comercial',area:'Edunova',status:'Activo',priority:'Alta',owner:'Juliana',progress:10,dueDate:'2025-09-30',notes:'Plan comercial pendiente de elaborar.'},
+    {id:8,name:'Copa UPB — Ser Diferente',area:'UPB',status:'Urgente',priority:'Alta',owner:'Paulina',progress:15,dueDate:'2025-10-31',notes:'Propuesta URGENTE. Octubre 2025.'},
+    {id:9,name:'Alianza USB',area:'USB',status:'Activo',priority:'Alta',owner:'Juliana',progress:35,dueDate:'2025-07-31',notes:'3 directivos quieren apoyar consolidación.'},
+    {id:10,name:'Proyecto Humano',area:'USB',status:'Activo',priority:'Alta',owner:'Carolina',progress:20,dueDate:'2025-07-31',notes:'Propuesta para rector UPB pendiente.'},
+    {id:11,name:'Importaciones China',area:'Importaciones',status:'Activo',priority:'Media',owner:'Juan',progress:50,dueDate:'2025-08-31',notes:'Medallas + 2000 camisetas NBA.'}
+  ],
+  tasks:[
+    {id:1,name:'Elaborar propuesta Copa UPB Ser Diferente',project:'Copa UPB — Ser Diferente',responsible:'Paulina',priority:'Urgente',energy:'Redacción',status:'Por hacer',dueDate:'2025-05-30',notes:''},
+    {id:2,name:'Concretar visita #2 USB',project:'Alianza USB',responsible:'Juliana',priority:'Urgente',energy:'Llamada/Reunión',status:'Por hacer',dueDate:'2025-05-28',notes:''},
+    {id:3,name:'Enviar plan estratégico + documentos USB',project:'Alianza USB',responsible:'Paulina',priority:'Urgente',energy:'Redacción',status:'Por hacer',dueDate:'2025-05-28',notes:'Plan estratégico + mapa gestión + mapa procesos + estructura org.'},
+    {id:4,name:'Firmar convenio Vivoon',project:'Vivoon — Referidos y Uniformes',responsible:'Juliana',priority:'Urgente',energy:'Llamada/Reunión',status:'Por hacer',dueDate:'2025-05-27',notes:''},
+    {id:5,name:'Reunión de recaudo Panamá',project:'Gira Panamá',responsible:'Juliana',priority:'Urgente',energy:'Llamada/Reunión',status:'Por hacer',dueDate:'2025-05-28',notes:''},
+    {id:6,name:'Propuesta Proyecto Humano rector UPB',project:'Proyecto Humano',responsible:'Juliana',priority:'Alta',energy:'Redacción',status:'Por hacer',dueDate:'2025-05-31',notes:''},
+    {id:7,name:'Plan comercial Edunova',project:'Edunova — Gerencia Comercial',responsible:'Juliana',priority:'Alta',energy:'Alta concentración',status:'Por hacer',dueDate:'2025-06-05',notes:''},
+    {id:8,name:'Visita Marinilla con Carlos UPB',project:'Sede Marinilla',responsible:'Juliana',priority:'Alta',energy:'Llamada/Reunión',status:'Por hacer',dueDate:'2025-06-07',notes:''},
+    {id:9,name:'Seguimiento entrega pedidos Vivoon',project:'Vivoon — Referidos y Uniformes',responsible:'Juan',priority:'Alta',energy:'Rutinaria',status:'En proceso',dueDate:'2025-06-01',notes:''},
+    {id:10,name:'Estrategia club — base de datos colegios',project:'Club Promesas de Antioquia',responsible:'Paulina',priority:'Alta',energy:'Alta concentración',status:'En proceso',dueDate:'2025-06-01',notes:''},
+    {id:11,name:'Convenio Reinvent Copa',project:'Copa Internacional Promesas',responsible:'Juliana',priority:'Alta',energy:'Llamada/Reunión',status:'En proceso',dueDate:'2025-06-01',notes:''},
+    {id:12,name:'Reestructuración precios Panamá',project:'Gira Panamá',responsible:'Juliana',priority:'Alta',energy:'Alta concentración',status:'Por hacer',dueDate:'2025-06-05',notes:''},
+    {id:13,name:'Subir camisetas NBA al ecommerce',project:'Ecommerce + Merch',responsible:'Melissa',priority:'Media',energy:'Rutinaria',status:'Por hacer',dueDate:'2025-06-15',notes:'Cuando lleguen las 2000 unidades'},
+    {id:14,name:'Entrega planeación community manager',project:'Club Promesas de Antioquia',responsible:'Carolina',priority:'Alta',energy:'Redacción',status:'Por hacer',dueDate:'2025-06-01',notes:''},
+    {id:15,name:'Listado y seguimiento comercial Vivoon',project:'Vivoon — Referidos y Uniformes',responsible:'Juliana',priority:'Alta',energy:'Rutinaria',status:'Por hacer',dueDate:'2025-06-10',notes:''},
+    {id:16,name:'Revisión inscripciones Copa Promesas',project:'Copa Internacional Promesas',responsible:'Carolina',priority:'Media',energy:'Rutinaria',status:'En proceso',dueDate:'2025-06-15',notes:''},
+    {id:17,name:'Enviar cotizaciones paquetes Copa',project:'Copa Internacional Promesas',responsible:'Carolina',priority:'Alta',energy:'Redacción',status:'Por hacer',dueDate:'2025-05-30',notes:''},
+    {id:18,name:'Reconstrucción página web Club Promesas',project:'Club Promesas de Antioquia',responsible:'Juliana',priority:'Media',energy:'Alta concentración',status:'Por hacer',dueDate:'2025-06-30',notes:''},
+    {id:19,name:'Informe periodo Coach',project:'Club Promesas de Antioquia',responsible:'Juliana',priority:'Alta',energy:'Redacción',status:'Por hacer',dueDate:'2025-06-01',notes:''},
+    {id:20,name:'Proyecto embajador Vivoon',project:'Vivoon — Referidos y Uniformes',responsible:'Juliana',priority:'Media',energy:'Alta concentración',status:'Por hacer',dueDate:'2025-06-30',notes:''}
+  ],
+  pipeline:[
+    {id:1,name:'Copa UPB — Ser Diferente',area:'UPB',contact:'Carlos UPB',stage:'Propuesta enviada',value:45000000,probability:75,closeDate:'2025-09-30',responsible:'Juliana',nextStep:'Enviar propuesta formal esta semana',notes:''},
+    {id:2,name:'Alianza institucional USB',area:'USB',contact:'Directivos USB (x3)',stage:'Reunión',value:80000000,probability:60,closeDate:'2025-08-31',responsible:'Juliana',nextStep:'Concretar visita #2 y enviar documentos',notes:''},
+    {id:3,name:'Proyecto Humano — Rector UPB',area:'UPB',contact:'Rector UPB',stage:'Contacto iniciado',value:12000000,probability:50,closeDate:'2025-07-31',responsible:'Juliana',nextStep:'Enviar propuesta para profesores',notes:''},
+    {id:4,name:'Convenio Vivoon — UPB Uniformes',area:'Vivoon',contact:'Carlos UPB',stage:'Negociación',value:25000000,probability:90,closeDate:'2025-06-15',responsible:'Juliana',nextStep:'Firma convenio esta semana',notes:''},
+    {id:5,name:'Clientes Edunova — Wave 1',area:'Edunova',contact:'Por definir',stage:'Nuevo lead',value:30000000,probability:25,closeDate:'2025-09-30',responsible:'Juliana',nextStep:'Elaborar plan comercial y definir targets',notes:''},
+    {id:6,name:'Patrocinios Copa Promesas',area:'Promesas',contact:'Múltiples',stage:'Propuesta enviada',value:60000000,probability:60,closeDate:'2025-08-31',responsible:'Juliana',nextStep:'Seguimiento cotizaciones',notes:''},
+    {id:7,name:'Recaudo Gira Panamá',area:'Promesas',contact:'Aliados Panamá',stage:'Reunión',value:18000000,probability:70,closeDate:'2025-07-15',responsible:'Juliana',nextStep:'Reunión recaudo URGENTE',notes:''},
+    {id:8,name:'Ecommerce NBA Camisetas',area:'Ecommerce',contact:'Clientes finales',stage:'Contacto iniciado',value:20000000,probability:80,closeDate:'2025-07-30',responsible:'Melissa',nextStep:'Subir al ecommerce cuando lleguen',notes:''},
+    {id:9,name:'Convenio Reinvent Copa',area:'Promesas',contact:'Reinvent',stage:'Negociación',value:15000000,probability:80,closeDate:'2025-06-15',responsible:'Juliana',nextStep:'Cerrar convenio',notes:''}
+  ],
+  contacts:[
+    {id:1,name:'Carlos UPB',org:'UPB',role:'Directivo',phone:'',email:'',lastContact:'2025-05-20',nextStep:'Visita Marinilla + Copa UPB propuesta',priority:'Alta',project:'Copa UPB / Marinilla',notes:'Clave para Copa UPB y sede Marinilla. Medallas interclases.'},
+    {id:2,name:'Rector UPB',org:'UPB',role:'Directivo',phone:'',email:'',lastContact:'2025-05-15',nextStep:'Enviar propuesta Proyecto Humano',priority:'Alta',project:'Proyecto Humano',notes:'Interesado en experiencia de diseño humano para profesores.'},
+    {id:3,name:'Directivos USB (x3)',org:'USB',role:'Directivo',phone:'',email:'',lastContact:'2025-05-10',nextStep:'Concretar visita #2 y enviar documentos',priority:'Alta',project:'Alianza USB',notes:'3 directivos quieren apoyar consolidación empresarial.'},
+    {id:4,name:'Aliados Panamá',org:'Proyecto Panamá',role:'Aliado',phone:'',email:'',lastContact:'2025-05-12',nextStep:'Reunión de recaudo urgente',priority:'Alta',project:'Gira Panamá',notes:''},
+    {id:5,name:'Reinvent',org:'Reinvent',role:'Patrocinador',phone:'',email:'',lastContact:'2025-05-18',nextStep:'Cerrar convenio Copa',priority:'Alta',project:'Copa Internacional Promesas',notes:''}
+  ],
+  financial:[
+    {id:1,concept:'Copa UPB — Organización',line:'UPB',type:'Ingreso esperado',amount:45000000,status:'Proyectado',expectedDate:'2025-10-01',notes:''},
+    {id:2,concept:'Alianza USB',line:'USB',type:'Ingreso esperado',amount:80000000,status:'Proyectado',expectedDate:'2025-09-01',notes:''},
+    {id:3,concept:'Patrocinios Copa Promesas',line:'Promesas',type:'Ingreso esperado',amount:60000000,status:'Confirmado',expectedDate:'2025-08-01',notes:'Paquetes en negociación'},
+    {id:4,concept:'Convenio Vivoon Uniformes UPB',line:'Vivoon',type:'Ingreso esperado',amount:25000000,status:'Confirmado',expectedDate:'2025-06-15',notes:'Comisión referidos. Firma inminente.'},
+    {id:5,concept:'Gira Panamá — Recaudo',line:'Promesas',type:'Ingreso esperado',amount:18000000,status:'Proyectado',expectedDate:'2025-07-15',notes:''},
+    {id:6,concept:'Edunova — Wave 1 Clientes',line:'Edunova',type:'Ingreso esperado',amount:30000000,status:'Proyectado',expectedDate:'2025-09-30',notes:'Plan comercial pendiente'},
+    {id:7,concept:'Ecommerce NBA Camisetas',line:'Ecommerce',type:'Ingreso esperado',amount:20000000,status:'Confirmado',expectedDate:'2025-07-30',notes:'2000 unidades'},
+    {id:8,concept:'Proyecto Humano UPB',line:'UPB',type:'Ingreso esperado',amount:12000000,status:'Proyectado',expectedDate:'2025-07-31',notes:''},
+    {id:9,concept:'Convenio Reinvent Copa',line:'Promesas',type:'Ingreso esperado',amount:15000000,status:'Confirmado',expectedDate:'2025-06-15',notes:''}
+  ],
+  alliances:[
+    {id:1,name:'Universidad San Buenaventura',type:'Universidad',status:'En negociación',contact:'Directivos USB (x3)',value:'Crítico',nextMove:'Visita #2 + documentos estratégicos',notes:'3 directivos grandes quieren apoyar consolidación empresarial.'},
+    {id:2,name:'UPB',type:'Universidad',status:'En negociación',contact:'Carlos UPB / Rector UPB',value:'Crítico',nextMove:'Copa UPB propuesta + Proyecto Humano',notes:'Múltiples frentes: Copa, Marinilla, Interclases, Proyecto Humano.'},
+    {id:3,name:'Vivoon',type:'Socio / Proveedor',status:'Activa',contact:'Equipo Vivoon',value:'Alto',nextMove:'Firmar convenio',notes:'Juliana es socia. Referidos + uniformes Copa + uniformes UPB.'},
+    {id:4,name:'Reinvent',type:'Patrocinador',status:'En negociación',contact:'Reinvent',value:'Alto',nextMove:'Cerrar convenio Copa',notes:'Convenio Copa Promesas en proceso.'},
+    {id:5,name:'Proveedor China — Medallas',type:'Proveedor',status:'Activa',contact:'Juan',value:'Medio',nextMove:'Confirmar pedido medallas',notes:'Medallas para interclases UPB.'},
+    {id:6,name:'Edunova',type:'Aliado estratégico',status:'Activa',contact:'Equipo Edunova',value:'Alto',nextMove:'Elaborar plan comercial',notes:'Juliana es gerente comercial. Generar flujo de caja.'}
+  ],
+  brain:{
+    ideas:[],
+    pending:[],
+    decisions:[],
+    personal:[{id:1,text:'Carolina cumple años el 14 de julio — regalo: viaje a Miami. Ciudad + mar + descanso.',date:'2025-05-23'}]
+  },
+  foco:'1. Cerrar convenio Vivoon\n2. Enviar propuesta Copa UPB\n3. Concretar visita USB #2',
+  nid:{p:12,t:21,pi:10,c:6,f:10,a:7,b:2}
+};
+
+// ======================================================
+// STATE
+// ======================================================
+let data, currentTab = 'dashboard';
+const TABS=[
+  {id:'dashboard',icon:'ti-layout-dashboard',label:'Comando'},
+  {id:'pipeline',icon:'ti-flame',label:'Pipeline'},
+  {id:'projects',icon:'ti-rocket',label:'Proyectos'},
+  {id:'tasks',icon:'ti-checkbox',label:'Tareas'},
+  {id:'contacts',icon:'ti-address-book',label:'Contactos'},
+  {id:'financial',icon:'ti-cash',label:'Financiero'},
+  {id:'alliances',icon:'ti-users',label:'Alianzas'},
+  {id:'brain',icon:'ti-brain',label:'Cerebro'}
+];
+const AREAS=['Promesas','Vivoon','Edunova','UPB','USB','Ecommerce','Importaciones','Personal'];
+const TEAM=['Juliana','Paulina','Carolina','Juan','Melissa','Pedro','Juan Pablo'];
+const PSTAGES=['Nuevo lead','Contacto iniciado','Reunión','Propuesta enviada','Negociación','Ganado ✅','Perdido ❌','Seguimiento futuro'];
+const STASK=['Por hacer','En proceso','Bloqueada','Lista ✅'];
+const ENERGY=['Alta concentración','Llamada/Reunión','Redacción','Rutinaria'];
+const PSTATUS=['Activo','Urgente','En pausa','Cerrado ✅'];
+const PRIORITIES=['Urgente','Alta','Media','Baja'];
+const PCOLORS={Urgente:'br',Alta:'bo',Media:'bg2',Baja:'bgray'};
+const STATUSBADGE={Activo:'bgreen',Urgente:'br','En pausa':'bgray','Cerrado ✅':'bgray','Por hacer':'bgray','En proceso':'bblue','Bloqueada':'br','Lista ✅':'bgreen',Proyectado:'bg2',Confirmado:'bblue',Recibido:'bgreen','Activa':'bgreen','En negociación':'bg2','Formalizada':'bgreen','Inactiva':'bgray'};
+const ACOLORS={Juliana:'#FF6B2B',Paulina:'#9B7BFF',Carolina:'#EC4899',Juan:'#22C87F',Melissa:'#4B9FFF',Pedro:'#FFB547','Juan Pablo':'#14B8A6'};
+const AREACOLOR={Promesas:'#FF6B2B',Vivoon:'#22C87F',Edunova:'#4B9FFF',UPB:'#9B7BFF',USB:'#EC4899',Ecommerce:'#FFB547',Importaciones:'#14B8A6',Personal:'#7880A8'};
+const KCOLS=['Nuevo lead','Contacto iniciado','Reunión','Propuesta enviada','Negociación','Ganado ✅','Perdido ❌','Seguimiento futuro'];
+
+function load(){
+  const s=localStorage.getItem('promesas-os-v2');
+  data=s?JSON.parse(s):JSON.parse(JSON.stringify(DEFDATA));
+}
+function save(){localStorage.setItem('promesas-os-v2',JSON.stringify(data));}
+function exportData(){
+  const a=document.createElement('a');
+  a.href='data:application/json,'+encodeURIComponent(JSON.stringify(data,null,2));
+  a.download='promesas-os-backup.json';a.click();
+}
+function importData(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();r.onload=ev=>{try{data=JSON.parse(ev.target.result);save();render();}catch(ex){alert('Archivo inválido');}};r.readAsText(f);
+}
+
+// ======================================================
+// UTILITIES
+// ======================================================
+function fCOP(n){
+  if(!n&&n!==0)return'—';
+  if(n>=1000000000)return'$'+(n/1000000000).toFixed(1)+'B';
+  if(n>=1000000)return'$'+(n/1000000).toFixed(1)+'M';
+  if(n>=1000)return'$'+(n/1000).toFixed(0)+'K';
+  return'$'+n;
+}
+function fDate(d){
+  if(!d)return'—';
+  const[y,m,day]=d.split('-');
+  const mo=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return`${parseInt(day)} ${mo[parseInt(m)-1]}`;
+}
+function daysLeft(d){
+  if(!d)return null;
+  return Math.ceil((new Date(d)-new Date())/86400000);
+}
+function bdg(cls,txt){return`<span class="badge ${cls}">${txt}</span>`;}
+function priBdg(p){return bdg(PCOLORS[p]||'bgray',p);}
+function stBdg(s){return bdg(STATUSBADGE[s]||'bgray',s);}
+function ava(name){
+  const c=ACOLORS[name]||'#7880A8';
+  const i=(name||'?').split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase();
+  return`<span class="avatar" style="background:${c}22;color:${c}" title="${name}">${i}</span>`;
+}
+function acBdg(area){
+  const c=AREACOLOR[area]||'#7880A8';
+  return`<span class="badge" style="background:${c}22;color:${c}">${area}</span>`;
+}
+function dLeft(d){
+  const n=daysLeft(d);
+  if(n===null)return'';
+  if(n<0)return`<span style="color:var(--red);font-size:11px">Vencida</span>`;
+  if(n===0)return`<span style="color:var(--accent);font-size:11px">Hoy</span>`;
+  if(n<=3)return`<span style="color:var(--gold);font-size:11px">${n}d</span>`;
+  return`<span style="color:var(--muted);font-size:11px">${n}d</span>`;
+}
+function pBar(pct){return`<div class="prog-wrap"><div class="prog-fill" style="width:${pct}%"></div></div>`;}
+
+// ======================================================
+// NAV
+// ======================================================
+function renderNav(){
+  const el=document.getElementById('nav-tabs');
+  el.innerHTML=TABS.map(t=>`<div class="ntab${t.id===currentTab?' active':''}" onclick="go('${t.id}')"><i class="ti ${t.icon}"></i>${t.label}</div>`).join('');
+}
+function go(tab){currentTab=tab;renderNav();renderContent();}
+
+// ======================================================
+// DASHBOARD
+// ======================================================
+function renderDashboard(){
+  const tasks=data.tasks;
+  const urgent=tasks.filter(t=>t.priority==='Urgente'&&t.status!=='Lista ✅');
+  const pipeline=data.pipeline.filter(p=>!p.stage.includes('Ganado')&&!p.stage.includes('Perdido'));
+  const totalPot=pipeline.reduce((s,p)=>s+p.value,0);
+  const totalPond=pipeline.reduce((s,p)=>s+(p.value*(p.probability/100)),0);
+  const activeProj=data.projects.filter(p=>p.status==='Activo'||p.status==='Urgente').length;
+  const urgentTasks=urgent.length;
+  const confirmed=data.financial.filter(f=>f.status==='Confirmado').reduce((s,f)=>s+f.amount,0);
+
+  const hotDeals=pipeline.sort((a,b)=>b.probability-a.probability).slice(0,5);
+  const urgentList=urgent.slice(0,6);
+  const urgentProj=data.projects.filter(p=>p.status==='Urgente');
+
+  return`
+<div class="section-title">
+  <span>🏠 Comando Central</span>
+  <span style="font-size:13px;color:var(--muted);font-family:'DM Sans';font-weight:400">${new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})}</span>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card" style="border-left-color:var(--gold)">
+    <div class="stat-label">Pipeline total</div>
+    <div class="stat-value">${fCOP(totalPot)}</div>
+    <div class="stat-sub">Potencial activo</div>
+  </div>
+  <div class="stat-card" style="border-left-color:var(--green)">
+    <div class="stat-label">Flujo ponderado</div>
+    <div class="stat-value">${fCOP(Math.round(totalPond))}</div>
+    <div class="stat-sub">Ajustado por prob.</div>
+  </div>
+  <div class="stat-card" style="border-left-color:var(--blue)">
+    <div class="stat-label">Confirmado</div>
+    <div class="stat-value">${fCOP(confirmed)}</div>
+    <div class="stat-sub">Ingresos confirmados</div>
+  </div>
+  <div class="stat-card" style="border-left-color:var(--red)">
+    <div class="stat-label">Tareas urgentes</div>
+    <div class="stat-value">${urgentTasks}</div>
+    <div class="stat-sub">Pendientes ahora</div>
+  </div>
+  <div class="stat-card" style="border-left-color:var(--purple)">
+    <div class="stat-label">Proyectos activos</div>
+    <div class="stat-value">${activeProj}</div>
+    <div class="stat-sub">${data.projects.filter(p=>p.status==='Urgente').length} urgentes</div>
+  </div>
+</div>
+
+<div class="grid-2" style="gap:14px;margin-bottom:1.25rem">
+  <div>
+    <div class="card">
+      <div class="card-header"><div class="ctitle">🎯 Foco de la semana</div></div>
+      <div class="foco-box">
+        <textarea class="foco-textarea" rows="4" placeholder="Escribe tus 3 prioridades de la semana..." onblur="saveFoco(this.value)">${data.foco||''}</textarea>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="card">
+      <div class="card-header"><div class="ctitle">🔴 Urgente ahora</div><button class="btn btn-ghost btn-sm" onclick="go('tasks')">Ver todas</button></div>
+      ${urgentList.length?urgentList.map(t=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
+          <input type="checkbox" onchange="quickDone(${t.id})" style="accent-color:var(--accent);cursor:pointer">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12.5px;line-height:1.3">${t.name}</div>
+            <div style="font-size:11px;color:var(--muted)">${ava(t.responsible)} ${t.responsible} · ${dLeft(t.dueDate)||fDate(t.dueDate)}</div>
+          </div>
+        </div>`).join(''):`<div class="empty-state"><i class="ti ti-circle-check"></i>Sin urgentes 🎉</div>`}
+    </div>
+  </div>
+</div>
+
+<div class="grid-2" style="gap:14px;margin-bottom:1.25rem">
+  <div class="card">
+    <div class="card-header"><div class="ctitle">🔥 Pipeline caliente</div><button class="btn btn-ghost btn-sm" onclick="go('pipeline')">Ver pipeline</button></div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Oportunidad</th><th>Valor</th><th>Prob.</th><th>Cierre</th></tr></thead>
+      <tbody>
+      ${hotDeals.map(p=>`<tr onclick="editItem('pipeline',${p.id})" style="cursor:pointer">
+        <td><div style="font-size:12.5px">${p.name}</div><div style="font-size:11px;color:var(--muted)">${p.nextStep}</div></td>
+        <td style="font-weight:600;color:var(--gold)">${fCOP(p.value)}</td>
+        <td>${bdg(p.probability>=75?'bgreen':p.probability>=50?'bg2':'bgray',p.probability+'%')}</td>
+        <td style="font-size:11px;color:var(--muted)">${fDate(p.closeDate)}</td>
+      </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="ctitle">🚀 Proyectos urgentes</div><button class="btn btn-ghost btn-sm" onclick="go('projects')">Ver todos</button></div>
+    ${urgentProj.length?urgentProj.map(p=>`
+      <div style="padding:8px 0;border-bottom:1px solid var(--border)" onclick="editItem('projects',${p.id})" style="cursor:pointer">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:13px;font-weight:500">${p.name}</div>
+          ${acBdg(p.area)}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${pBar(p.progress)}
+          <span style="font-size:11px;color:var(--muted)">${p.progress}%</span>
+          ${ava(p.owner)}
+        </div>
+      </div>`).join(''):`<div class="empty-state" style="padding:1.5rem"><i class="ti ti-rocket"></i>Sin urgentes</div>`}
+  </div>
+</div>`;
+}
+
+function saveFoco(v){data.foco=v;save();}
+function quickDone(id){
+  const t=data.tasks.find(x=>x.id===id);
+  if(t){t.status='Lista ✅';save();renderContent();}
+}
+
+// ======================================================
+// PIPELINE
+// ======================================================
+function renderPipeline(){
+  const taskFil=document.createElement('div');
+  const total=data.pipeline.filter(p=>!p.stage.includes('Ganado')&&!p.stage.includes('Perdido')).reduce((s,p)=>s+(p.value*(p.probability/100)),0);
+  
+  const colsHtml=KCOLS.map(stage=>{
+    const cards=data.pipeline.filter(p=>p.stage===stage);
+    const stageVal=cards.reduce((s,c)=>s+c.value,0);
+    return`<div class="kcol">
+      <div class="kcol-header">
+        <span>${stage.replace(' ✅','').replace(' ❌','')}</span>
+        <span style="background:var(--elevated);padding:1px 6px;border-radius:10px">${cards.length}</span>
+      </div>
+      ${stageVal>0?`<div style="font-size:11px;color:var(--gold);margin-bottom:8px">${fCOP(stageVal)}</div>`:''}
+      ${cards.map(c=>`<div class="kcard" onclick="editItem('pipeline',${c.id})">
+        <div class="kcard-title">${c.name}</div>
+        <div>${acBdg(c.area)}</div>
+        <div class="kcard-val">${fCOP(c.value)}</div>
+        <div class="kcard-meta">
+          <span>${bdg(c.probability>=75?'bgreen':c.probability>=50?'bg2':'bgray',c.probability+'%')}</span>
+          <span>${fDate(c.closeDate)}</span>
+        </div>
+        ${c.nextStep?`<div style="font-size:10px;color:var(--muted);margin-top:5px;line-height:1.3">${c.nextStep}</div>`:''}
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+
+  return`
+<div class="section-title">
+  <span>🔥 Motor Comercial</span>
+  <button class="btn btn-primary btn-sm" onclick="openModal('pipeline',null)"><i class="ti ti-plus"></i> Nueva oportunidad</button>
+</div>
+<div style="display:flex;gap:10px;margin-bottom:1rem;flex-wrap:wrap">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 14px;font-size:13px">
+    Flujo ponderado activo: <strong style="color:var(--gold)">${fCOP(Math.round(total))}</strong>
+  </div>
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 14px;font-size:13px">
+    Oportunidades activas: <strong>${data.pipeline.filter(p=>!p.stage.includes('Ganado')&&!p.stage.includes('Perdido')).length}</strong>
+  </div>
+</div>
+<div class="kanban-scroll">${colsHtml}</div>`;
+}
+
+// ======================================================
+// PROJECTS
+// ======================================================
+function renderProjects(){
+  let filterArea=document.getElementById('proj-area-filter')?document.getElementById('proj-area-filter').value:'todos';
+  let filterStatus=document.getElementById('proj-status-filter')?document.getElementById('proj-status-filter').value:'todos';
+  
+  const areas=[...new Set(data.projects.map(p=>p.area))];
+  let proj=data.projects;
+  if(filterArea&&filterArea!=='todos') proj=proj.filter(p=>p.area===filterArea);
+  if(filterStatus&&filterStatus!=='todos') proj=proj.filter(p=>p.status===filterStatus);
+  proj=proj.sort((a,b)=>{const ord={Urgente:0,Alta:1,Media:2,Baja:3};return(ord[a.priority]||9)-(ord[b.priority]||9);});
+
+  return`
+<div class="section-title">
+  <span>🚀 Sala de Máquinas</span>
+  <button class="btn btn-primary btn-sm" onclick="openModal('projects',null)"><i class="ti ti-plus"></i> Nuevo proyecto</button>
+</div>
+<div class="filter-bar">
+  <select class="fsel" id="proj-area-filter" onchange="renderContent()">
+    <option value="todos">Todas las áreas</option>
+    ${areas.map(a=>`<option value="${a}">${a}</option>`).join('')}
+  </select>
+  <select class="fsel" id="proj-status-filter" onchange="renderContent()">
+    <option value="todos">Todos los estados</option>
+    ${PSTATUS.map(s=>`<option value="${s}">${s}</option>`).join('')}
+  </select>
+</div>
+<div class="grid-auto">
+${proj.map(p=>`<div class="card" style="cursor:pointer;border-left:3px solid ${AREACOLOR[p.area]||'var(--dim)'}" onclick="editItem('projects',${p.id})">
+  <div style="display:flex;align-items:start;justify-content:space-between;margin-bottom:8px;gap:6px">
+    <div style="font-size:13px;font-weight:600;line-height:1.3">${p.name}</div>
+    ${stBdg(p.status)}
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+    ${acBdg(p.area)}${priBdg(p.priority)}
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    ${pBar(p.progress)}
+    <span style="font-size:11px;color:var(--muted)">${p.progress}%</span>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:5px">${ava(p.owner)}<span style="font-size:11px;color:var(--muted)">${p.owner}</span></div>
+    <span style="font-size:11px;color:var(--muted)">${fDate(p.dueDate)}</span>
+  </div>
+  ${p.notes?`<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.4;border-top:1px solid var(--border);padding-top:8px">${p.notes}</div>`:''}
+</div>`).join('')}
+</div>`;
+}
+
+// ======================================================
+// TASKS
+// ======================================================
+function renderTasks(){
+  let fResp='todos',fPri='todos',fStatus='todos';
+  try{fResp=document.getElementById('t-resp-f')?.value||'todos';}catch(e){}
+  try{fPri=document.getElementById('t-pri-f')?.value||'todos';}catch(e){}
+  try{fStatus=document.getElementById('t-status-f')?.value||'todos';}catch(e){}
+
+  let tasks=[...data.tasks];
+  if(fResp!=='todos')tasks=tasks.filter(t=>t.responsible===fResp);
+  if(fPri!=='todos')tasks=tasks.filter(t=>t.priority===fPri);
+  if(fStatus!=='todos')tasks=tasks.filter(t=>t.status===fStatus);
+  const ord={Urgente:0,Alta:1,Media:2,Baja:3};
+  tasks.sort((a,b)=>(ord[a.priority]||9)-(ord[b.priority]||9));
+
+  const pending=tasks.filter(t=>t.status!=='Lista ✅');
+  const done=tasks.filter(t=>t.status==='Lista ✅');
+
+  return`
+<div class="section-title">
+  <span>✅ Tablero de Ejecución</span>
+  <button class="btn btn-primary btn-sm" onclick="openModal('tasks',null)"><i class="ti ti-plus"></i> Nueva tarea</button>
+</div>
+<div class="filter-bar">
+  <select class="fsel" id="t-resp-f" onchange="renderContent()">
+    <option value="todos">Todos</option>
+    ${TEAM.map(m=>`<option value="${m}">${m}</option>`).join('')}
+  </select>
+  <select class="fsel" id="t-pri-f" onchange="renderContent()">
+    <option value="todos">Prioridad</option>
+    ${PRIORITIES.map(p=>`<option value="${p}">${p}</option>`).join('')}
+  </select>
+  <select class="fsel" id="t-status-f" onchange="renderContent()">
+    <option value="todos">Estado</option>
+    ${STASK.map(s=>`<option value="${s}">${s}</option>`).join('')}
+  </select>
+  <span style="font-size:12px;color:var(--muted);margin-left:4px">${pending.length} pendientes · ${done.length} listas</span>
+</div>
+<div class="card">
+<div class="table-wrap">
+<table>
+<thead><tr><th style="width:32px"></th><th>Tarea</th><th>Proyecto</th><th>Resp.</th><th>Prioridad</th><th>Estado</th><th>Fecha</th><th style="width:32px"></th></tr></thead>
+<tbody>
+${tasks.map(t=>`<tr style="${t.status==='Lista ✅'?'opacity:.45':''}">
+  <td><input type="checkbox" ${t.status==='Lista ✅'?'checked':''} onchange="toggleTask(${t.id})" style="accent-color:var(--accent);cursor:pointer"></td>
+  <td>
+    <div style="font-size:13px;${t.status==='Lista ✅'?'text-decoration:line-through;color:var(--muted)':''}">${t.name}</div>
+    ${t.notes?`<div style="font-size:11px;color:var(--muted)">${t.notes}</div>`:''}
+  </td>
+  <td style="font-size:12px;color:var(--muted);max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.project||'—'}</td>
+  <td>${ava(t.responsible)}</td>
+  <td>${priBdg(t.priority)}</td>
+  <td>${stBdg(t.status)}</td>
+  <td>${dLeft(t.dueDate)||fDate(t.dueDate)}</td>
+  <td>
+    <div style="display:flex;gap:4px">
+      <button class="btn-icon btn" onclick="editItem('tasks',${t.id})"><i class="ti ti-edit" style="font-size:13px"></i></button>
+      <button class="btn-icon btn" onclick="deleteItem('tasks',${t.id})" style="color:var(--red)"><i class="ti ti-trash" style="font-size:13px"></i></button>
+    </div>
+  </td>
+</tr>`).join('')}
+</tbody>
+</table>
+</div>
+</div>`;
+}
+
+function toggleTask(id){
+  const t=data.tasks.find(x=>x.id===id);
+  if(t){t.status=t.status==='Lista ✅'?'Por hacer':'Lista ✅';save();renderContent();}
+}
+
+// ======================================================
+// CONTACTS
+// ======================================================
+function renderContacts(){
+  let fPri='todos';
+  try{fPri=document.getElementById('c-pri-f')?.value||'todos';}catch(e){}
+  let contacts=[...data.contacts];
+  if(fPri!=='todos')contacts=contacts.filter(c=>c.priority===fPri);
+
+  return`
+<div class="section-title">
+  <span>📊 Radar de Contactos</span>
+  <button class="btn btn-primary btn-sm" onclick="openModal('contacts',null)"><i class="ti ti-plus"></i> Nuevo contacto</button>
+</div>
+<div class="filter-bar">
+  <select class="fsel" id="c-pri-f" onchange="renderContent()">
+    <option value="todos">Todas las prioridades</option>
+    ${PRIORITIES.map(p=>`<option value="${p}">${p}</option>`).join('')}
+  </select>
+</div>
+<div class="card">
+<div class="table-wrap">
+<table>
+<thead><tr><th>Contacto</th><th>Organización</th><th>Rol</th><th>Proyecto</th><th>Último contacto</th><th>Próximo paso</th><th>Pri.</th><th></th></tr></thead>
+<tbody>
+${contacts.map(c=>`<tr>
+  <td><div style="display:flex;align-items:center;gap:7px">${ava(c.name)}<div><div style="font-size:13px;font-weight:500">${c.name}</div>${c.email?`<div style="font-size:11px;color:var(--muted)">${c.email}</div>`:''}</div></div></td>
+  <td style="font-size:12px">${c.org||'—'}</td>
+  <td>${c.role?bdg('bgray',c.role):'—'}</td>
+  <td style="font-size:12px;color:var(--muted)">${c.project||'—'}</td>
+  <td style="font-size:12px;color:var(--muted)">${fDate(c.lastContact)}</td>
+  <td style="font-size:12px;max-width:150px">${c.nextStep||'—'}</td>
+  <td>${priBdg(c.priority)}</td>
+  <td><div style="display:flex;gap:4px">
+    <button class="btn-icon btn" onclick="editItem('contacts',${c.id})"><i class="ti ti-edit" style="font-size:13px"></i></button>
+    <button class="btn-icon btn" onclick="deleteItem('contacts',${c.id})" style="color:var(--red)"><i class="ti ti-trash" style="font-size:13px"></i></button>
+  </div></td>
+</tr>`).join('')}
+</tbody>
+</table>
+</div>
+</div>`;
+}
+
+// ======================================================
+// FINANCIAL
+// ======================================================
+function renderFinancial(){
+  const total=data.financial.reduce((s,f)=>s+f.amount,0);
+  const confirmed=data.financial.filter(f=>f.status==='Confirmado').reduce((s,f)=>s+f.amount,0);
+  const projected=data.financial.filter(f=>f.status==='Proyectado').reduce((s,f)=>s+f.amount,0);
+  const received=data.financial.filter(f=>f.status==='Recibido').reduce((s,f)=>s+f.amount,0);
+
+  const byLine={};
+  data.financial.forEach(f=>{
+    byLine[f.line]=(byLine[f.line]||0)+f.amount;
+  });
+
+  return`
+<div class="section-title">
+  <span>💰 Flujo de Valor</span>
+  <button class="btn btn-primary btn-sm" onclick="openModal('financial',null)"><i class="ti ti-plus"></i> Nuevo registro</button>
+</div>
+<div class="stat-grid" style="margin-bottom:1.25rem">
+  <div class="stat-card" style="border-left-color:var(--text)">
+    <div class="stat-label">Total portafolio</div>
+    <div class="stat-value">${fCOP(total)}</div>
+    <div class="stat-sub">Todos los registros</div>
+  </div>
+  <div class="stat-card" style="border-left-color:var(--blue)">
+    <div class="stat-label">Confirmado</div>
+    <div class="stat-value">${fCOP(confirmed)}</div>
+    <div class="stat-sub">Alta probabilidad</div>
+  </div>
+  <div class="stat-card" style="border-left-color:var(--gold)">
+    <div class="stat-label">Proyectado</div>
+    <div class="stat-value">${fCOP(projected)}</div>
+    <div class="stat-sub">En proceso</div>
+  </div>
+  <div class="stat-card" style="border-left-color:var(--green)">
+    <div class="stat-label">Recibido</div>
+    <div class="stat-value">${fCOP(received)}</div>
+    <div class="stat-sub">En caja</div>
+  </div>
+</div>
+<div class="grid-2" style="margin-bottom:1.25rem;gap:14px">
+  <div class="card">
+    <div class="ctitle" style="margin-bottom:.9rem">Por línea de negocio</div>
+    ${Object.entries(byLine).sort((a,b)=>b[1]-a[1]).map(([line,amt])=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px">${acBdg(line)}</div>
+        <div style="font-weight:600;color:var(--gold)">${fCOP(amt)}</div>
+      </div>`).join('')}
+  </div>
+  <div class="card">
+    <div class="ctitle" style="margin-bottom:.9rem">Próximos ingresos</div>
+    ${data.financial.filter(f=>f.status!=='Recibido').sort((a,b)=>new Date(a.expectedDate)-new Date(b.expectedDate)).slice(0,5).map(f=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+        <div><div style="font-size:12.5px">${f.concept}</div><div style="font-size:11px;color:var(--muted)">${fDate(f.expectedDate)}</div></div>
+        <div style="display:flex;align-items:center;gap:6px">${stBdg(f.status)}<span style="font-weight:600;color:var(--gold);font-size:13px">${fCOP(f.amount)}</span></div>
+      </div>`).join('')}
+  </div>
+</div>
+<div class="card">
+<div class="table-wrap">
+<table>
+<thead><tr><th>Concepto</th><th>Línea</th><th>Tipo</th><th>Monto</th><th>Estado</th><th>Fecha esperada</th><th>Notas</th><th></th></tr></thead>
+<tbody>
+${data.financial.sort((a,b)=>new Date(a.expectedDate)-new Date(b.expectedDate)).map(f=>`<tr>
+  <td style="font-size:13px">${f.concept}</td>
+  <td>${acBdg(f.line)}</td>
+  <td style="font-size:12px;color:var(--muted)">${f.type}</td>
+  <td style="font-weight:600;color:var(--gold)">${fCOP(f.amount)}</td>
+  <td>${stBdg(f.status)}</td>
+  <td style="font-size:12px;color:var(--muted)">${fDate(f.expectedDate)}</td>
+  <td style="font-size:11px;color:var(--muted);max-width:120px">${f.notes||'—'}</td>
+  <td><div style="display:flex;gap:4px">
+    <button class="btn-icon btn" onclick="editItem('financial',${f.id})"><i class="ti ti-edit" style="font-size:13px"></i></button>
+    <button class="btn-icon btn" onclick="deleteItem('financial',${f.id})" style="color:var(--red)"><i class="ti ti-trash" style="font-size:13px"></i></button>
+  </div></td>
+</tr>`).join('')}
+</tbody>
+</table>
+</div>
+</div>`;
+}
+
+// ======================================================
+// ALLIANCES
+// ======================================================
+function renderAlliances(){
+  const valColor={'Crítico':'br','Alto':'bo','Medio':'bg2'};
+  return`
+<div class="section-title">
+  <span>🤝 Red Estratégica</span>
+  <button class="btn btn-primary btn-sm" onclick="openModal('alliances',null)"><i class="ti ti-plus"></i> Nueva alianza</button>
+</div>
+<div class="grid-auto">
+${data.alliances.map(a=>`<div class="card" style="cursor:pointer" onclick="editItem('alliances',${a.id})">
+  <div style="display:flex;align-items:start;justify-content:space-between;margin-bottom:8px;gap:6px">
+    <div style="font-size:14px;font-weight:600">${a.name}</div>
+    ${bdg(valColor[a.value]||'bgray',a.value||'—')}
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+    ${bdg('bgray',a.type)}
+    ${stBdg(a.status)}
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:8px"><i class="ti ti-user" style="font-size:12px"></i> ${a.contact||'—'}</div>
+  ${a.nextMove?`<div style="background:var(--elevated);border-radius:8px;padding:8px;font-size:12px">
+    <span style="color:var(--accent);font-weight:500">Próximo movimiento</span><br>${a.nextMove}
+  </div>`:''}
+  ${a.notes?`<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.4">${a.notes}</div>`:''}
+</div>`).join('')}
+</div>`;
+}
+
+// ======================================================
+// BRAIN
+// ======================================================
+function renderBrain(){
+  const sections=[
+    {key:'ideas',icon:'ti-bulb',label:'Ideas rápidas',color:'#FFB547',placeholder:'Captura cualquier idea sin filtro...'},
+    {key:'pending',icon:'ti-alert-circle',label:'Pendientes mentales',color:'#FF6B2B',placeholder:'Lo que tienes en la cabeza y no has delegado...'},
+    {key:'decisions',icon:'ti-scale',label:'Decisiones importantes',color:'#4B9FFF',placeholder:'Decisiones que requieren tu criterio...'},
+    {key:'personal',icon:'ti-heart',label:'Seguimiento personal',color:'#EC4899',placeholder:'Promesas hechas, cosas que revisar...'}
+  ];
+  return`
+<div class="section-title"><span>🧠 Cerebro Vivo</span></div>
+<div class="grid-2">
+${sections.map(s=>`
+  <div class="card">
+    <div class="card-header">
+      <div class="ctitle" style="color:${s.color}"><i class="ti ${s.icon}"></i> ${s.label}</div>
+    </div>
+    <input class="brain-input" placeholder="${s.placeholder}" onkeydown="addBrain(event,'${s.key}',this)">
+    <div id="brain-${s.key}">
+    ${(data.brain[s.key]||[]).map(item=>`
+      <div class="brain-item">
+        <div style="flex:1;line-height:1.5">${item.text}</div>
+        <button class="btn-icon btn" onclick="removeBrain('${s.key}',${item.id})" style="color:var(--muted);flex-shrink:0"><i class="ti ti-x" style="font-size:12px"></i></button>
+      </div>`).join('')}
+    </div>
+  </div>`).join('')}
+</div>`;
+}
+
+function addBrain(e,key,inp){
+  if(e.key==='Enter'&&inp.value.trim()){
+    const item={id:data.nid.b++,text:inp.value.trim(),date:new Date().toISOString().split('T')[0]};
+    data.brain[key].unshift(item);
+    inp.value='';save();
+    document.getElementById('brain-'+key).innerHTML=(data.brain[key]||[]).map(item=>`
+      <div class="brain-item">
+        <div style="flex:1;line-height:1.5">${item.text}</div>
+        <button class="btn-icon btn" onclick="removeBrain('${key}',${item.id})" style="color:var(--muted);flex-shrink:0"><i class="ti ti-x" style="font-size:12px"></i></button>
+      </div>`).join('');
+  }
+}
+function removeBrain(key,id){
+  data.brain[key]=data.brain[key].filter(i=>i.id!==id);save();
+  document.getElementById('brain-'+key).innerHTML=(data.brain[key]||[]).map(item=>`
+    <div class="brain-item">
+      <div style="flex:1;line-height:1.5">${item.text}</div>
+      <button class="btn-icon btn" onclick="removeBrain('${key}',${item.id})" style="color:var(--muted);flex-shrink:0"><i class="ti ti-x" style="font-size:12px"></i></button>
+    </div>`).join('');
+}
+
+// ======================================================
+// RENDER
+// ======================================================
+function renderContent(){
+  const el=document.getElementById('content');
+  const fn={dashboard:renderDashboard,pipeline:renderPipeline,projects:renderProjects,tasks:renderTasks,contacts:renderContacts,financial:renderFinancial,alliances:renderAlliances,brain:renderBrain};
+  el.innerHTML=(fn[currentTab]||renderDashboard)();
+}
+function render(){renderNav();renderContent();}
+
+// ======================================================
+// MODAL SYSTEM
+// ======================================================
+function overlayClick(e){if(e.target===document.getElementById('modal-overlay'))closeModal();}
+function closeModal(){document.getElementById('modal-overlay').classList.remove('open');}
+function openModal(type,id){
+  const item=id?data[type].find(x=>x.id===id):null;
+  const box=document.getElementById('modal-box');
+  box.innerHTML=buildForm(type,item);
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function editItem(type,id){openModal(type,id);}
+function deleteItem(type,id){
+  if(!confirm('¿Eliminar este registro?'))return;
+  data[type]=data[type].filter(x=>x.id!==id);save();closeModal();renderContent();
+}
+
+function buildForm(type,item){
+  const isEdit=!!item;
+  const title={pipeline:'Oportunidad',projects:'Proyecto',tasks:'Tarea',contacts:'Contacto',financial:'Registro financiero',alliances:'Alianza'}[type];
+  let fields='';
+
+  if(type==='pipeline'){
+    fields=`
+    <div class="fg"><label class="fl">Nombre de la oportunidad</label><input class="fc" id="f-name" value="${e(item?.name)}"></div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Área</label><select class="fc" id="f-area">${AREAS.map(a=>`<option ${item?.area===a?'selected':''}>${a}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">Etapa</label><select class="fc" id="f-stage">${PSTAGES.map(s=>`<option ${item?.stage===s?'selected':''}>${s}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Valor (COP)</label><input class="fc" id="f-value" type="number" value="${item?.value||''}"></div>
+      <div class="fg"><label class="fl">Probabilidad %</label><input class="fc" id="f-prob" type="number" min="0" max="100" value="${item?.probability||''}"></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Contacto</label><input class="fc" id="f-contact" value="${e(item?.contact)}"></div>
+      <div class="fg"><label class="fl">Fecha cierre est.</label><input class="fc" id="f-close" type="date" value="${item?.closeDate||''}"></div>
+    </div>
+    <div class="fg"><label class="fl">Responsable</label><select class="fc" id="f-resp">${TEAM.map(m=>`<option ${item?.responsible===m?'selected':''}>${m}</option>`).join('')}</select></div>
+    <div class="fg"><label class="fl">Próximo paso</label><input class="fc" id="f-next" value="${e(item?.nextStep)}"></div>
+    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${e(item?.notes)}</textarea></div>`;
+  } else if(type==='projects'){
+    fields=`
+    <div class="fg"><label class="fl">Nombre del proyecto</label><input class="fc" id="f-name" value="${e(item?.name)}"></div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Área</label><select class="fc" id="f-area">${AREAS.map(a=>`<option ${item?.area===a?'selected':''}>${a}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">Estado</label><select class="fc" id="f-status">${PSTATUS.map(s=>`<option ${item?.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Prioridad</label><select class="fc" id="f-pri">${PRIORITIES.map(p=>`<option ${item?.priority===p?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">Dueño</label><select class="fc" id="f-owner">${TEAM.map(m=>`<option ${item?.owner===m?'selected':''}>${m}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">% Avance</label><input class="fc" id="f-prog" type="number" min="0" max="100" value="${item?.progress||0}"></div>
+      <div class="fg"><label class="fl">Fecha objetivo</label><input class="fc" id="f-due" type="date" value="${item?.dueDate||''}"></div>
+    </div>
+    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${e(item?.notes)}</textarea></div>`;
+  } else if(type==='tasks'){
+    const projects=[...new Set(data.projects.map(p=>p.name))];
+    fields=`
+    <div class="fg"><label class="fl">Tarea</label><input class="fc" id="f-name" value="${e(item?.name)}"></div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Proyecto</label><select class="fc" id="f-proj"><option value="">Sin proyecto</option>${projects.map(p=>`<option ${item?.project===p?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">Responsable</label><select class="fc" id="f-resp">${TEAM.map(m=>`<option ${item?.responsible===m?'selected':''}>${m}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Prioridad</label><select class="fc" id="f-pri">${PRIORITIES.map(p=>`<option ${item?.priority===p?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">Energía</label><select class="fc" id="f-energy">${ENERGY.map(en=>`<option ${item?.energy===en?'selected':''}>${en}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Estado</label><select class="fc" id="f-status">${STASK.map(s=>`<option ${item?.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">Fecha límite</label><input class="fc" id="f-due" type="date" value="${item?.dueDate||''}"></div>
+    </div>
+    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${e(item?.notes)}</textarea></div>`;
+  } else if(type==='contacts'){
+    fields=`
+    <div class="form-row">
+      <div class="fg"><label class="fl">Nombre</label><input class="fc" id="f-name" value="${e(item?.name)}"></div>
+      <div class="fg"><label class="fl">Organización</label><input class="fc" id="f-org" value="${e(item?.org)}"></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Rol</label><select class="fc" id="f-role"><option>Directivo</option><option>Patrocinador</option><option>Proveedor</option><option>Aliado</option><option>Prospecto</option><option>Coach</option><option>Familia</option></select></div>
+      <div class="fg"><label class="fl">Prioridad</label><select class="fc" id="f-pri">${PRIORITIES.map(p=>`<option ${item?.priority===p?'selected':''}>${p}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Teléfono</label><input class="fc" id="f-phone" value="${e(item?.phone)}"></div>
+      <div class="fg"><label class="fl">Email</label><input class="fc" id="f-email" value="${e(item?.email)}"></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Proyecto relacionado</label><input class="fc" id="f-proj" value="${e(item?.project)}"></div>
+      <div class="fg"><label class="fl">Último contacto</label><input class="fc" id="f-last" type="date" value="${item?.lastContact||''}"></div>
+    </div>
+    <div class="fg"><label class="fl">Próximo paso</label><input class="fc" id="f-next" value="${e(item?.nextStep)}"></div>
+    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${e(item?.notes)}</textarea></div>`;
+  } else if(type==='financial'){
+    fields=`
+    <div class="fg"><label class="fl">Concepto</label><input class="fc" id="f-name" value="${e(item?.concept)}"></div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Línea</label><select class="fc" id="f-line">${AREAS.map(a=>`<option ${item?.line===a?'selected':''}>${a}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">Tipo</label><select class="fc" id="f-type"><option>Ingreso esperado</option><option>Ingreso cerrado</option><option>Egreso</option><option>Inversión</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Monto (COP)</label><input class="fc" id="f-amount" type="number" value="${item?.amount||''}"></div>
+      <div class="fg"><label class="fl">Estado</label><select class="fc" id="f-status"><option>Proyectado</option><option>Confirmado</option><option>Recibido</option><option>Perdido</option></select></div>
+    </div>
+    <div class="fg"><label class="fl">Fecha esperada</label><input class="fc" id="f-date" type="date" value="${item?.expectedDate||''}"></div>
+    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${e(item?.notes)}</textarea></div>`;
+  } else if(type==='alliances'){
+    fields=`
+    <div class="fg"><label class="fl">Organización</label><input class="fc" id="f-name" value="${e(item?.name)}"></div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Tipo</label><select class="fc" id="f-type"><option>Universidad</option><option>Proveedor</option><option>Patrocinador</option><option>Aliado estratégico</option><option>Socio / Proveedor</option><option>Institución</option></select></div>
+      <div class="fg"><label class="fl">Estado</label><select class="fc" id="f-status"><option>Activa</option><option>En negociación</option><option>Prospecto</option><option>Formalizada</option><option>Inactiva</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label class="fl">Contacto clave</label><input class="fc" id="f-contact" value="${e(item?.contact)}"></div>
+      <div class="fg"><label class="fl">Valor estratégico</label><select class="fc" id="f-value"><option>Crítico</option><option>Alto</option><option>Medio</option></select></div>
+    </div>
+    <div class="fg"><label class="fl">Próximo movimiento</label><input class="fc" id="f-next" value="${e(item?.nextMove)}"></div>
+    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${e(item?.notes)}</textarea></div>`;
+  }
+
+  const deleteBtn=isEdit?`<button type="button" class="btn btn-ghost" onclick="deleteItem('${type}',${item.id})" style="color:var(--red);border-color:var(--red)"><i class="ti ti-trash"></i> Eliminar</button>`:'';
+  return`
+    <div class="modal-title">${isEdit?'Editar':'Nuevo'} ${title}</div>
+    ${fields}
+    <div class="modal-actions">
+      ${deleteBtn}
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="saveForm('${type}',${item?.id||'null'})"><i class="ti ti-check"></i> Guardar</button>
+    </div>`;
+}
+
+function e(v){return(v||'').toString().replace(/"/g,'&quot;');}
+
+function getVal(id){const el=document.getElementById(id);return el?el.value:'';}
+
+function saveForm(type,id){
+  let obj={};
+  if(type==='pipeline'){
+    obj={name:getVal('f-name'),area:getVal('f-area'),stage:getVal('f-stage'),value:parseFloat(getVal('f-value'))||0,probability:parseFloat(getVal('f-prob'))||0,contact:getVal('f-contact'),closeDate:getVal('f-close'),responsible:getVal('f-resp'),nextStep:getVal('f-next'),notes:getVal('f-notes')};
+  } else if(type==='projects'){
+    obj={name:getVal('f-name'),area:getVal('f-area'),status:getVal('f-status'),priority:getVal('f-pri'),owner:getVal('f-owner'),progress:parseInt(getVal('f-prog'))||0,dueDate:getVal('f-due'),notes:getVal('f-notes')};
+  } else if(type==='tasks'){
+    obj={name:getVal('f-name'),project:getVal('f-proj'),responsible:getVal('f-resp'),priority:getVal('f-pri'),energy:getVal('f-energy'),status:getVal('f-status'),dueDate:getVal('f-due'),notes:getVal('f-notes')};
+  } else if(type==='contacts'){
+    obj={name:getVal('f-name'),org:getVal('f-org'),role:getVal('f-role'),priority:getVal('f-pri'),phone:getVal('f-phone'),email:getVal('f-email'),project:getVal('f-proj'),lastContact:getVal('f-last'),nextStep:getVal('f-next'),notes:getVal('f-notes')};
+  } else if(type==='financial'){
+    obj={concept:getVal('f-name'),line:getVal('f-line'),type:getVal('f-type'),amount:parseFloat(getVal('f-amount'))||0,status:getVal('f-status'),expectedDate:getVal('f-date'),notes:getVal('f-notes')};
+  } else if(type==='alliances'){
+    obj={name:getVal('f-name'),type:getVal('f-type'),status:getVal('f-status'),contact:getVal('f-contact'),value:getVal('f-value'),nextMove:getVal('f-next'),notes:getVal('f-notes')};
+  }
+  const nidMap={pipeline:'pi',projects:'p',tasks:'t',contacts:'c',financial:'f',alliances:'a'};
+  if(id&&id!==null){
+    const idx=data[type].findIndex(x=>x.id===id);
+    if(idx>-1)data[type][idx]={...data[type][idx],...obj};
+  } else {
+    const nk=nidMap[type];
+    obj.id=data.nid[nk]++;
+    data[type].push(obj);
+  }
+  save();closeModal();renderContent();
+}
+
+// ======================================================
+// INIT
+// ======================================================
+load();render();
+</script>
+</body>
+</html>
