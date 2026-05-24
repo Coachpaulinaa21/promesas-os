@@ -308,11 +308,10 @@ async function seedIfEmpty(){
   syncDot('syncing');
   const batch = writeBatch(db);
 
-  // Seed each collection
+  // Seed each collection (tasks son propiedad exclusiva del sistema externo)
   for(const [col, arr] of Object.entries({
     pipeline:DEFDATA.pipeline,
     projects:DEFDATA.projects,
-    tasks:DEFDATA.tasks,
     contacts:DEFDATA.contacts,
     financial:DEFDATA.financial,
     alliances:DEFDATA.alliances
@@ -561,7 +560,8 @@ window.go = function(tab){currentTab=tab;renderNav();renderContent();};
 // ======================================================
 function renderDashboard(){
   const tasks=data.tasks;
-  const urgent=tasks.filter(t=>t.priority==='Urgente'&&t.status!=='Lista ✅');
+  // Usa taskEsLista() para compatibilidad con sistema externo de tareas
+  const urgent=tasks.filter(t=>!taskEsLista(t)&&(t.priority==='Urgente'||/urgente/i.test(t.priority||t.prioridad||'')));
   const pipeline=data.pipeline.filter(p=>!p.stage.includes('Ganado')&&!p.stage.includes('Perdido'));
   const totalPot=pipeline.reduce((s,p)=>s+p.value,0);
   const totalPond=pipeline.reduce((s,p)=>s+(p.value*(p.probability/100)),0);
@@ -620,8 +620,8 @@ function renderDashboard(){
         <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
           <input type="checkbox" disabled style="accent-color:var(--accent);opacity:.6">
           <div style="flex:1;min-width:0">
-            <div style="font-size:12.5px;line-height:1.3">${t.name}</div>
-            <div style="font-size:11px;color:var(--muted)">${ava(t.responsible)} ${t.responsible} · ${dLeft(t.dueDate)||fDate(t.dueDate)}</div>
+            <div style="font-size:12.5px;line-height:1.3">${taskNombre(t)}</div>
+            <div style="font-size:11px;color:var(--muted)">${ava(taskResp(t))} ${taskResp(t)||'—'}</div>
           </div>
         </div>`).join(''):`<div class="empty-state"><i class="ti ti-circle-check"></i>Sin urgentes 🎉</div>`}
     </div>
@@ -769,36 +769,82 @@ ${proj.map(p=>`<div class="card" style="cursor:pointer;border-left:3px solid ${A
 
 // ======================================================
 // TASKS — solo lectura desde Firestore (sistema externo)
-// Las tareas se gestionan en: https://coachpaulinaa21.github.io/Tareas-promesas/
-// Estado: si completed===true (o status==='Lista ✅') → "Lista", si no → "Pendiente"
+// Fuente: colección "tasks" compartida con Tareas Promesas
+// https://coachpaulinaa21.github.io/Tareas-promesas/
+//
+// Estructura esperada de cada doc en Firestore:
+//   texto / name / title / text  → nombre de la tarea
+//   completed (bool)             → true = lista
+//   assignee / responsible / persona → responsable
+//   priority / prioridad         → Alta / Media / Normal / Urgente
+//   project / proyecto / dependencia → proyecto relacionado
+//
+// Promesas OS NO escribe en tasks. Solo lee y muestra.
 // ======================================================
 
-// Normaliza cualquier tarea del sistema externo a dos estados simples
+// ── Detecta si una tarea está completada sin importar qué campo use el sistema externo
 function taskEsLista(t){
-  return t.completed===true || t.status==='Lista ✅' || t.status==='Lista' || t.status==='Completada' || t.done===true;
+  if(t.completed === true)  return true;
+  if(t.done      === true)  return true;
+  if(t.checked   === true)  return true;
+  const s = (t.status || t.estado || '').toLowerCase();
+  if(s === 'lista' || s === 'lista ✅' || s === 'completada' || s === 'done' || s === 'complete') return true;
+  return false;
 }
-function taskEstado(t){
-  return taskEsLista(t) ? 'Lista' : 'Pendiente';
+
+// ── Nombre de la tarea (acepta cualquier campo)
+function taskNombre(t){
+  return t.texto || t.name || t.title || t.text || t.tarea || '(sin nombre)';
+}
+
+// ── Responsable
+function taskResp(t){
+  return t.assignee || t.responsible || t.responsable || t.persona || '';
+}
+
+// ── Prioridad — normaliza al sistema de badges existente
+function taskPri(t){
+  const raw = (t.priority || t.prioridad || 'Normal').toString();
+  // mapear "Alta"→Alta, "Media"→Media, cualquier otro→Normal
+  if(/alta|urgente/i.test(raw))  return 'Alta';
+  if(/media/i.test(raw))         return 'Media';
+  return 'Normal';
+}
+const TASK_PRI_BADGE = { Alta:'bo', Media:'bg2', Normal:'bgray', Urgente:'br' };
+
+// ── Proyecto / dependencia
+function taskProyecto(t){
+  return t.project || t.proyecto || t.dependencia || t.dependency || '';
 }
 
 function renderTasks(){
   let fResp='todos', fStatus='todos';
-  try{fResp=document.getElementById('t-resp-f')?.value||'todos';}catch(e){}
-  try{fStatus=document.getElementById('t-status-f')?.value||'todos';}catch(e){}
+  try{fResp   = document.getElementById('t-resp-f')?.value   || 'todos';}catch(e){}
+  try{fStatus = document.getElementById('t-status-f')?.value || 'todos';}catch(e){}
 
-  let tasks=[...data.tasks];
-  if(fResp!=='todos') tasks=tasks.filter(t=>t.responsible===fResp);
-  if(fStatus==='Pendiente') tasks=tasks.filter(t=>!taskEsLista(t));
-  else if(fStatus==='Lista')  tasks=tasks.filter(t=> taskEsLista(t));
+  // Usar TODAS las tareas de Firestore, sin excluir ninguna
+  let tasks = [...data.tasks];
 
-  // Primero pendientes, luego listas
-  tasks.sort((a,b)=>{
-    const aL=taskEsLista(a)?1:0, bL=taskEsLista(b)?1:0;
-    return aL-bL;
+  // Filtro responsable
+  if(fResp !== 'todos') tasks = tasks.filter(t => taskResp(t) === fResp);
+
+  // Filtro estado
+  if(fStatus === 'Pendiente') tasks = tasks.filter(t => !taskEsLista(t));
+  else if(fStatus === 'Lista') tasks = tasks.filter(t =>  taskEsLista(t));
+
+  // Orden: pendientes primero, luego listas; dentro de cada grupo por orden natural
+  tasks.sort((a, b) => {
+    const aL = taskEsLista(a) ? 1 : 0;
+    const bL = taskEsLista(b) ? 1 : 0;
+    return aL - bL;
   });
 
-  const pending=tasks.filter(t=>!taskEsLista(t));
-  const done=tasks.filter(t=> taskEsLista(t));
+  const totalTasks   = data.tasks.length;
+  const pendingCount = data.tasks.filter(t => !taskEsLista(t)).length;
+  const doneCount    = data.tasks.filter(t =>  taskEsLista(t)).length;
+
+  // Responsables únicos reales presentes en Firestore
+  const responsables = [...new Set(data.tasks.map(t => taskResp(t)).filter(Boolean))].sort();
 
   return`
 <div class="section-title">
@@ -807,40 +853,42 @@ function renderTasks(){
 </div>
 <div style="background:var(--elevated);border:1px dashed var(--borderS);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted);margin-bottom:1rem;display:flex;align-items:center;gap:7px">
   <i class="ti ti-eye" style="font-size:14px;color:var(--accent)"></i>
-  Visor estratégico — sincronizado en tiempo real desde Firestore. Para crear o editar tareas usa el sistema operativo de tareas.
+  Visor estratégico — sincronizado en tiempo real. Total en Firestore: <strong style="color:var(--text);margin:0 3px">${totalTasks}</strong> tareas · <strong style="color:var(--accent);margin:0 3px">${pendingCount}</strong> pendientes · <strong style="color:var(--green);margin:0 3px">${doneCount}</strong> listas
 </div>
 <div class="filter-bar">
   <select class="fsel" id="t-resp-f" onchange="renderContent()">
     <option value="todos">Todos</option>
-    ${TEAM.map(m=>`<option value="${m}">${m}</option>`).join('')}
+    ${responsables.map(r=>`<option value="${r}">${r}</option>`).join('')}
   </select>
   <select class="fsel" id="t-status-f" onchange="renderContent()">
     <option value="todos">Todos los estados</option>
     <option value="Pendiente">Pendiente</option>
     <option value="Lista">Lista</option>
   </select>
-  <span style="font-size:12px;color:var(--muted);margin-left:4px">${pending.length} pendientes · ${done.length} listas</span>
+  <span style="font-size:12px;color:var(--muted);margin-left:4px">${tasks.length} tareas mostradas</span>
 </div>
 <div class="card">
 <div class="table-wrap">
 <table>
-<thead><tr><th style="width:28px"></th><th>Tarea</th><th>Proyecto</th><th>Resp.</th><th>Estado</th><th>Fecha</th></tr></thead>
+<thead><tr><th style="width:24px"></th><th>Tarea</th><th>Responsable</th><th>Proyecto / Dependencia</th><th>Prioridad</th><th>Estado</th></tr></thead>
 <tbody>
 ${tasks.length===0?`<tr><td colspan="6"><div class="empty-state"><i class="ti ti-checkbox"></i>No hay tareas con estos filtros</div></td></tr>`:''}
 ${tasks.map(t=>{
-  const lista=taskEsLista(t);
-  const estado=taskEstado(t);
-  const estadoBadge=lista?'<span class="badge bgreen">Lista</span>':'<span class="badge bgray">Pendiente</span>';
+  const lista    = taskEsLista(t);
+  const nombre   = taskNombre(t);
+  const resp     = taskResp(t);
+  const pri      = taskPri(t);
+  const proyecto = taskProyecto(t);
+  const estadoBadge = lista
+    ? '<span class="badge bgreen">Lista</span>'
+    : '<span class="badge bgray">Pendiente</span>';
   return`<tr style="${lista?'opacity:.45':''}">
-  <td><span class="dot ${lista?'dot-g':'dot-o'}"></span></td>
-  <td>
-    <div style="font-size:13px;${lista?'text-decoration:line-through;color:var(--muted)':''}">${t.name||t.text||t.title||'—'}</div>
-    ${t.notes?`<div style="font-size:11px;color:var(--muted)">${t.notes}</div>`:''}
-  </td>
-  <td style="font-size:12px;color:var(--muted);max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.project||'—'}</td>
-  <td>${ava(t.responsible||t.assignee||'')}</td>
+  <td><span class="dot ${lista?'dot-g':pri==='Alta'?'dot-o':'dot-gr'}"></span></td>
+  <td><div style="font-size:13px;${lista?'text-decoration:line-through;color:var(--muted)':''}">${nombre}</div></td>
+  <td>${resp?ava(resp)+'<span style="font-size:12px;color:var(--muted);margin-left:4px">'+resp+'</span>':'—'}</td>
+  <td style="font-size:12px;color:var(--muted);max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${proyecto||'—'}</td>
+  <td>${bdg(TASK_PRI_BADGE[pri]||'bgray',pri)}</td>
   <td>${estadoBadge}</td>
-  <td>${dLeft(t.dueDate)||fDate(t.dueDate)||'—'}</td>
 </tr>`;
 }).join('')}
 </tbody>
