@@ -20,7 +20,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .ntab:hover{color:var(--text)}
 .ntab.active{color:var(--accent);border-bottom-color:var(--accent)}
 .ntab .ti{font-size:15px}
-.topbar-actions{display:flex;gap:6px;margin-left:auto;flex-shrink:0}
+.topbar-actions{display:flex;gap:6px;margin-left:auto;flex-shrink:0;align-items:center}
+#sync-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background .3s;flex-shrink:0}
+#sync-dot.syncing{background:var(--gold)}
+#sync-dot.ok{background:var(--green)}
+#sync-dot.err{background:var(--red)}
 #main{padding:1.5rem;max-width:1400px;margin:0 auto}
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.25rem}
 .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
@@ -91,6 +95,12 @@ textarea.fc{resize:vertical;min-height:70px}
 .brain-item{padding:9px 11px;background:var(--elevated);border-radius:8px;margin-bottom:6px;font-size:13px;display:flex;justify-content:space-between;align-items:start;gap:8px;line-height:1.5}
 .brain-input{width:100%;padding:8px 10px;border-radius:8px;border:1px dashed var(--borderS);background:transparent;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;margin-bottom:8px}
 .brain-input::placeholder{color:var(--muted)}
+#loading-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+#loading-screen .logo{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--accent)}
+#loading-screen .logo span{color:var(--text)}
+#loading-screen .sub{font-size:13px;color:var(--muted)}
+.spinner{width:32px;height:32px;border:3px solid var(--dim);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--dim);border-radius:2px}
@@ -99,22 +109,51 @@ textarea.fc{resize:vertical;min-height:70px}
 </head>
 <body>
 
-<div id="topbar">
+<div id="loading-screen">
+  <div class="logo">P<span>OS</span></div>
+  <div class="spinner"></div>
+  <div class="sub">Conectando con Firestore...</div>
+</div>
+
+<div id="topbar" style="display:none">
   <div id="logo">P<span>OS</span></div>
   <div class="nav-tabs" id="nav-tabs"></div>
   <div class="topbar-actions">
+    <div id="sync-dot" title="Estado de sincronización"></div>
     <button class="btn btn-ghost btn-sm" onclick="exportData()"><i class="ti ti-download"></i><span class="hide-sm"> Exportar</span></button>
     <label class="btn btn-ghost btn-sm" style="cursor:pointer"><i class="ti ti-upload"></i><span class="hide-sm"> Importar</span><input type="file" accept=".json" style="display:none" onchange="importData(event)"></label>
   </div>
 </div>
-<div id="main"><div id="content"></div></div>
+<div id="main" style="display:none"><div id="content"></div></div>
 <div id="modal-overlay" class="modal-overlay" onclick="overlayClick(event)">
   <div id="modal-box" class="modal" onclick="event.stopPropagation()"></div>
 </div>
 
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore,
+  doc, getDoc, setDoc, updateDoc, deleteDoc,
+  collection, getDocs, addDoc, onSnapshot,
+  serverTimestamp, writeBatch
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
 // ======================================================
-// DATA
+// FIREBASE INIT
+// ======================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyD1TM0IDrzmx3KURZ1Fx1x5Gte537E_21Y",
+  authDomain: "promesas-control-center.firebaseapp.com",
+  projectId: "promesas-control-center",
+  storageBucket: "promesas-control-center.firebasestorage.app",
+  messagingSenderId: "232276553601",
+  appId: "1:232276553601:web:7e77a19f4a6aa4044bc280"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ======================================================
+// DEFAULT DATA
 // ======================================================
 const DEFDATA = {
   projects:[
@@ -202,7 +241,12 @@ const DEFDATA = {
 // ======================================================
 // STATE
 // ======================================================
-let data, currentTab = 'dashboard';
+let data = JSON.parse(JSON.stringify(DEFDATA));
+let currentTab = 'dashboard';
+let unsubscribers = [];
+let focoDebounce = null;
+let initialized = false;
+
 const TABS=[
   {id:'dashboard',icon:'ti-layout-dashboard',label:'Comando'},
   {id:'pipeline',icon:'ti-flame',label:'Pipeline'},
@@ -226,20 +270,240 @@ const ACOLORS={Juliana:'#FF6B2B',Paulina:'#9B7BFF',Carolina:'#EC4899',Juan:'#22C
 const AREACOLOR={Promesas:'#FF6B2B',Vivoon:'#22C87F',Edunova:'#4B9FFF',UPB:'#9B7BFF',USB:'#EC4899',Ecommerce:'#FFB547',Importaciones:'#14B8A6',Personal:'#7880A8'};
 const KCOLS=['Nuevo lead','Contacto iniciado','Reunión','Propuesta enviada','Negociación','Ganado ✅','Perdido ❌','Seguimiento futuro'];
 
-function load(){
-  const s=localStorage.getItem('promesas-os-v2');
-  data=s?JSON.parse(s):JSON.parse(JSON.stringify(DEFDATA));
+// ======================================================
+// SYNC DOT
+// ======================================================
+function syncDot(state){
+  const d=document.getElementById('sync-dot');
+  if(!d)return;
+  d.className='';
+  d.classList.add(state);
+  if(state==='ok'){setTimeout(()=>d.classList.remove('ok'),2000);}
 }
-function save(){localStorage.setItem('promesas-os-v2',JSON.stringify(data));}
-function exportData(){
+
+// ======================================================
+// FIRESTORE HELPERS
+// ======================================================
+const COL = {
+  pipeline:'pipeline',
+  projects:'projects',
+  tasks:'tasks',
+  contacts:'contacts',
+  financial:'financial',
+  alliances:'alliances'
+};
+
+function stripUndefined(obj){
+  return JSON.parse(JSON.stringify(obj));
+}
+
+// ======================================================
+// FIRESTORE SEED (first run)
+// ======================================================
+async function seedIfEmpty(){
+  const metaRef = doc(db,'meta','state');
+  const metaSnap = await getDoc(metaRef);
+  if(metaSnap.exists()) return; // already seeded
+
+  syncDot('syncing');
+  const batch = writeBatch(db);
+
+  // Seed each collection
+  for(const [col, arr] of Object.entries({
+    pipeline:DEFDATA.pipeline,
+    projects:DEFDATA.projects,
+    tasks:DEFDATA.tasks,
+    contacts:DEFDATA.contacts,
+    financial:DEFDATA.financial,
+    alliances:DEFDATA.alliances
+  })){
+    for(const item of arr){
+      const ref = doc(db, col, String(item.id));
+      batch.set(ref, stripUndefined(item));
+    }
+  }
+
+  // brain as single doc
+  batch.set(doc(db,'meta','brain'), stripUndefined(DEFDATA.brain));
+  // foco
+  batch.set(doc(db,'meta','foco'), {text: DEFDATA.foco});
+  // nid counters
+  batch.set(doc(db,'meta','nid'), stripUndefined(DEFDATA.nid));
+  // mark seeded
+  batch.set(metaRef, {seeded: true});
+
+  await batch.commit();
+  syncDot('ok');
+}
+
+// ======================================================
+// LOAD FROM FIRESTORE (initial)
+// ======================================================
+async function loadFromFirestore(){
+  for(const col of Object.keys(COL)){
+    const snap = await getDocs(collection(db, col));
+    data[col] = [];
+    snap.forEach(d => data[col].push({...d.data(), _fsId: d.id}));
+    // ensure numeric ids
+    data[col].forEach(item => { if(typeof item.id === 'string') item.id = parseInt(item.id)||item.id; });
+  }
+
+  const brainSnap = await getDoc(doc(db,'meta','brain'));
+  if(brainSnap.exists()) data.brain = brainSnap.data();
+
+  const focoSnap = await getDoc(doc(db,'meta','foco'));
+  if(focoSnap.exists()) data.foco = focoSnap.data().text || '';
+
+  const nidSnap = await getDoc(doc(db,'meta','nid'));
+  if(nidSnap.exists()) data.nid = nidSnap.data();
+}
+
+// ======================================================
+// REAL-TIME LISTENERS
+// ======================================================
+function attachListeners(){
+  // Unsubscribe previous
+  unsubscribers.forEach(u => u());
+  unsubscribers = [];
+
+  for(const col of Object.keys(COL)){
+    const unsub = onSnapshot(collection(db, col), snap => {
+      if(!initialized) return;
+      data[col] = [];
+      snap.forEach(d => {
+        const item = {...d.data(), _fsId: d.id};
+        if(typeof item.id === 'string') item.id = parseInt(item.id)||item.id;
+        data[col].push(item);
+      });
+      renderContent();
+    }, err => console.error('Listener error', col, err));
+    unsubscribers.push(unsub);
+  }
+
+  // brain listener
+  const unsubBrain = onSnapshot(doc(db,'meta','brain'), snap => {
+    if(!initialized) return;
+    if(snap.exists()){
+      data.brain = snap.data();
+      if(currentTab==='brain') renderContent();
+    }
+  });
+  unsubscribers.push(unsubBrain);
+
+  // foco listener
+  const unsubFoco = onSnapshot(doc(db,'meta','foco'), snap => {
+    if(!initialized) return;
+    if(snap.exists()){
+      const newFoco = snap.data().text || '';
+      if(newFoco !== data.foco){
+        data.foco = newFoco;
+        // update textarea if visible without full re-render
+        const ta = document.querySelector('.foco-textarea');
+        if(ta && document.activeElement !== ta) ta.value = newFoco;
+      }
+    }
+  });
+  unsubscribers.push(unsubFoco);
+
+  // nid listener
+  const unsubNid = onSnapshot(doc(db,'meta','nid'), snap => {
+    if(!initialized) return;
+    if(snap.exists()) data.nid = snap.data();
+  });
+  unsubscribers.push(unsubNid);
+}
+
+// ======================================================
+// SAVE OPERATIONS
+// ======================================================
+async function saveItem(col, item){
+  syncDot('syncing');
+  try{
+    const fsId = String(item.id);
+    const clean = stripUndefined(item);
+    delete clean._fsId;
+    await setDoc(doc(db, col, fsId), clean, {merge:true});
+    syncDot('ok');
+  } catch(err){
+    console.error('saveItem error', err);
+    syncDot('err');
+  }
+}
+
+async function deleteItemFromFS(col, id){
+  syncDot('syncing');
+  try{
+    await deleteDoc(doc(db, col, String(id)));
+    syncDot('ok');
+  } catch(err){
+    console.error('deleteItem error', err);
+    syncDot('err');
+  }
+}
+
+async function saveNid(){
+  try{ await setDoc(doc(db,'meta','nid'), stripUndefined(data.nid), {merge:true}); } catch(e){}
+}
+
+async function saveBrain(){
+  syncDot('syncing');
+  try{
+    await setDoc(doc(db,'meta','brain'), stripUndefined(data.brain));
+    syncDot('ok');
+  } catch(err){ syncDot('err'); }
+}
+
+// ======================================================
+// EXPORT / IMPORT
+// ======================================================
+window.exportData = function(){
+  const exportObj = {
+    pipeline: data.pipeline.map(x=>{const c={...x};delete c._fsId;return c;}),
+    projects: data.projects.map(x=>{const c={...x};delete c._fsId;return c;}),
+    tasks: data.tasks.map(x=>{const c={...x};delete c._fsId;return c;}),
+    contacts: data.contacts.map(x=>{const c={...x};delete c._fsId;return c;}),
+    financial: data.financial.map(x=>{const c={...x};delete c._fsId;return c;}),
+    alliances: data.alliances.map(x=>{const c={...x};delete c._fsId;return c;}),
+    brain: data.brain,
+    foco: data.foco,
+    nid: data.nid
+  };
   const a=document.createElement('a');
-  a.href='data:application/json,'+encodeURIComponent(JSON.stringify(data,null,2));
+  a.href='data:application/json,'+encodeURIComponent(JSON.stringify(exportObj,null,2));
   a.download='promesas-os-backup.json';a.click();
-}
-function importData(e){
+};
+
+window.importData = async function(e){
   const f=e.target.files[0];if(!f)return;
-  const r=new FileReader();r.onload=ev=>{try{data=JSON.parse(ev.target.result);save();render();}catch(ex){alert('Archivo inválido');}};r.readAsText(f);
-}
+  const r=new FileReader();
+  r.onload=async ev=>{
+    try{
+      const imported=JSON.parse(ev.target.result);
+      syncDot('syncing');
+      const batch = writeBatch(db);
+      for(const [col, arr] of Object.entries({
+        pipeline:imported.pipeline||[],
+        projects:imported.projects||[],
+        tasks:imported.tasks||[],
+        contacts:imported.contacts||[],
+        financial:imported.financial||[],
+        alliances:imported.alliances||[]
+      })){
+        for(const item of arr){
+          const clean = {...item}; delete clean._fsId;
+          batch.set(doc(db, col, String(item.id)), stripUndefined(clean));
+        }
+      }
+      if(imported.brain) batch.set(doc(db,'meta','brain'), stripUndefined(imported.brain));
+      if(imported.foco!=null) batch.set(doc(db,'meta','foco'), {text: imported.foco});
+      if(imported.nid) batch.set(doc(db,'meta','nid'), stripUndefined(imported.nid));
+      await batch.commit();
+      syncDot('ok');
+      alert('Importación completada');
+    } catch(ex){ alert('Archivo inválido: '+ex.message); syncDot('err'); }
+  };
+  r.readAsText(f);
+};
 
 // ======================================================
 // UTILITIES
@@ -290,7 +554,7 @@ function renderNav(){
   const el=document.getElementById('nav-tabs');
   el.innerHTML=TABS.map(t=>`<div class="ntab${t.id===currentTab?' active':''}" onclick="go('${t.id}')"><i class="ti ${t.icon}"></i>${t.label}</div>`).join('');
 }
-function go(tab){currentTab=tab;renderNav();renderContent();}
+window.go = function(tab){currentTab=tab;renderNav();renderContent();};
 
 // ======================================================
 // DASHBOARD
@@ -304,7 +568,6 @@ function renderDashboard(){
   const activeProj=data.projects.filter(p=>p.status==='Activo'||p.status==='Urgente').length;
   const urgentTasks=urgent.length;
   const confirmed=data.financial.filter(f=>f.status==='Confirmado').reduce((s,f)=>s+f.amount,0);
-
   const hotDeals=pipeline.sort((a,b)=>b.probability-a.probability).slice(0,5);
   const urgentList=urgent.slice(0,6);
   const urgentProj=data.projects.filter(p=>p.status==='Urgente');
@@ -314,7 +577,6 @@ function renderDashboard(){
   <span>🏠 Comando Central</span>
   <span style="font-size:13px;color:var(--muted);font-family:'DM Sans';font-weight:400">${new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})}</span>
 </div>
-
 <div class="stat-grid">
   <div class="stat-card" style="border-left-color:var(--gold)">
     <div class="stat-label">Pipeline total</div>
@@ -342,7 +604,6 @@ function renderDashboard(){
     <div class="stat-sub">${data.projects.filter(p=>p.status==='Urgente').length} urgentes</div>
   </div>
 </div>
-
 <div class="grid-2" style="gap:14px;margin-bottom:1.25rem">
   <div>
     <div class="card">
@@ -366,7 +627,6 @@ function renderDashboard(){
     </div>
   </div>
 </div>
-
 <div class="grid-2" style="gap:14px;margin-bottom:1.25rem">
   <div class="card">
     <div class="card-header"><div class="ctitle">🔥 Pipeline caliente</div><button class="btn btn-ghost btn-sm" onclick="go('pipeline')">Ver pipeline</button></div>
@@ -402,19 +662,28 @@ function renderDashboard(){
 </div>`;
 }
 
-function saveFoco(v){data.foco=v;save();}
-function quickDone(id){
+window.saveFoco = async function(v){
+  data.foco=v;
+  clearTimeout(focoDebounce);
+  focoDebounce = setTimeout(async ()=>{
+    syncDot('syncing');
+    try{
+      await setDoc(doc(db,'meta','foco'),{text:v});
+      syncDot('ok');
+    } catch(e){ syncDot('err'); }
+  }, 800);
+};
+
+window.quickDone = async function(id){
   const t=data.tasks.find(x=>x.id===id);
-  if(t){t.status='Lista ✅';save();renderContent();}
-}
+  if(t){t.status='Lista ✅'; await saveItem('tasks',t); renderContent();}
+};
 
 // ======================================================
 // PIPELINE
 // ======================================================
 function renderPipeline(){
-  const taskFil=document.createElement('div');
   const total=data.pipeline.filter(p=>!p.stage.includes('Ganado')&&!p.stage.includes('Perdido')).reduce((s,p)=>s+(p.value*(p.probability/100)),0);
-  
   const colsHtml=KCOLS.map(stage=>{
     const cards=data.pipeline.filter(p=>p.stage===stage);
     const stageVal=cards.reduce((s,c)=>s+c.value,0);
@@ -436,7 +705,6 @@ function renderPipeline(){
       </div>`).join('')}
     </div>`;
   }).join('');
-
   return`
 <div class="section-title">
   <span>🔥 Motor Comercial</span>
@@ -459,13 +727,11 @@ function renderPipeline(){
 function renderProjects(){
   let filterArea=document.getElementById('proj-area-filter')?document.getElementById('proj-area-filter').value:'todos';
   let filterStatus=document.getElementById('proj-status-filter')?document.getElementById('proj-status-filter').value:'todos';
-  
   const areas=[...new Set(data.projects.map(p=>p.area))];
   let proj=data.projects;
   if(filterArea&&filterArea!=='todos') proj=proj.filter(p=>p.area===filterArea);
   if(filterStatus&&filterStatus!=='todos') proj=proj.filter(p=>p.status===filterStatus);
   proj=proj.sort((a,b)=>{const ord={Urgente:0,Alta:1,Media:2,Baja:3};return(ord[a.priority]||9)-(ord[b.priority]||9);});
-
   return`
 <div class="section-title">
   <span>🚀 Sala de Máquinas</span>
@@ -511,17 +777,14 @@ function renderTasks(){
   try{fResp=document.getElementById('t-resp-f')?.value||'todos';}catch(e){}
   try{fPri=document.getElementById('t-pri-f')?.value||'todos';}catch(e){}
   try{fStatus=document.getElementById('t-status-f')?.value||'todos';}catch(e){}
-
   let tasks=[...data.tasks];
   if(fResp!=='todos')tasks=tasks.filter(t=>t.responsible===fResp);
   if(fPri!=='todos')tasks=tasks.filter(t=>t.priority===fPri);
   if(fStatus!=='todos')tasks=tasks.filter(t=>t.status===fStatus);
   const ord={Urgente:0,Alta:1,Media:2,Baja:3};
   tasks.sort((a,b)=>(ord[a.priority]||9)-(ord[b.priority]||9));
-
   const pending=tasks.filter(t=>t.status!=='Lista ✅');
   const done=tasks.filter(t=>t.status==='Lista ✅');
-
   return`
 <div class="section-title">
   <span>✅ Tablero de Ejecución</span>
@@ -571,10 +834,10 @@ ${tasks.map(t=>`<tr style="${t.status==='Lista ✅'?'opacity:.45':''}">
 </div>`;
 }
 
-function toggleTask(id){
+window.toggleTask = async function(id){
   const t=data.tasks.find(x=>x.id===id);
-  if(t){t.status=t.status==='Lista ✅'?'Por hacer':'Lista ✅';save();renderContent();}
-}
+  if(t){t.status=t.status==='Lista ✅'?'Por hacer':'Lista ✅'; await saveItem('tasks',t); renderContent();}
+};
 
 // ======================================================
 // CONTACTS
@@ -584,7 +847,6 @@ function renderContacts(){
   try{fPri=document.getElementById('c-pri-f')?.value||'todos';}catch(e){}
   let contacts=[...data.contacts];
   if(fPri!=='todos')contacts=contacts.filter(c=>c.priority===fPri);
-
   return`
 <div class="section-title">
   <span>📊 Radar de Contactos</span>
@@ -628,12 +890,8 @@ function renderFinancial(){
   const confirmed=data.financial.filter(f=>f.status==='Confirmado').reduce((s,f)=>s+f.amount,0);
   const projected=data.financial.filter(f=>f.status==='Proyectado').reduce((s,f)=>s+f.amount,0);
   const received=data.financial.filter(f=>f.status==='Recibido').reduce((s,f)=>s+f.amount,0);
-
   const byLine={};
-  data.financial.forEach(f=>{
-    byLine[f.line]=(byLine[f.line]||0)+f.amount;
-  });
-
+  data.financial.forEach(f=>{byLine[f.line]=(byLine[f.line]||0)+f.amount;});
   return`
 <div class="section-title">
   <span>💰 Flujo de Valor</span>
@@ -762,62 +1020,70 @@ ${sections.map(s=>`
 </div>`;
 }
 
-function addBrain(e,key,inp){
+window.addBrain = async function(e,key,inp){
   if(e.key==='Enter'&&inp.value.trim()){
     const item={id:data.nid.b++,text:inp.value.trim(),date:new Date().toISOString().split('T')[0]};
+    if(!data.brain[key]) data.brain[key]=[];
     data.brain[key].unshift(item);
-    inp.value='';save();
-    document.getElementById('brain-'+key).innerHTML=(data.brain[key]||[]).map(item=>`
+    inp.value='';
+    await saveBrain();
+    await saveNid();
+    const el=document.getElementById('brain-'+key);
+    if(el) el.innerHTML=(data.brain[key]||[]).map(item=>`
       <div class="brain-item">
         <div style="flex:1;line-height:1.5">${item.text}</div>
         <button class="btn-icon btn" onclick="removeBrain('${key}',${item.id})" style="color:var(--muted);flex-shrink:0"><i class="ti ti-x" style="font-size:12px"></i></button>
       </div>`).join('');
   }
-}
-function removeBrain(key,id){
-  data.brain[key]=data.brain[key].filter(i=>i.id!==id);save();
-  document.getElementById('brain-'+key).innerHTML=(data.brain[key]||[]).map(item=>`
+};
+
+window.removeBrain = async function(key,id){
+  data.brain[key]=data.brain[key].filter(i=>i.id!==id);
+  await saveBrain();
+  const el=document.getElementById('brain-'+key);
+  if(el) el.innerHTML=(data.brain[key]||[]).map(item=>`
     <div class="brain-item">
       <div style="flex:1;line-height:1.5">${item.text}</div>
       <button class="btn-icon btn" onclick="removeBrain('${key}',${item.id})" style="color:var(--muted);flex-shrink:0"><i class="ti ti-x" style="font-size:12px"></i></button>
     </div>`).join('');
-}
+};
 
 // ======================================================
 // RENDER
 // ======================================================
-function renderContent(){
+window.renderContent = function(){
   const el=document.getElementById('content');
   const fn={dashboard:renderDashboard,pipeline:renderPipeline,projects:renderProjects,tasks:renderTasks,contacts:renderContacts,financial:renderFinancial,alliances:renderAlliances,brain:renderBrain};
   el.innerHTML=(fn[currentTab]||renderDashboard)();
-}
+};
 function render(){renderNav();renderContent();}
 
 // ======================================================
 // MODAL SYSTEM
 // ======================================================
-function overlayClick(e){if(e.target===document.getElementById('modal-overlay'))closeModal();}
-function closeModal(){document.getElementById('modal-overlay').classList.remove('open');}
-function openModal(type,id){
-  const item=id?data[type].find(x=>x.id===id):null;
+window.overlayClick = function(e){if(e.target===document.getElementById('modal-overlay'))closeModal();};
+window.closeModal = function(){document.getElementById('modal-overlay').classList.remove('open');};
+window.openModal = function(type,id){
+  const item=id!=null?data[type].find(x=>x.id===id):null;
   const box=document.getElementById('modal-box');
   box.innerHTML=buildForm(type,item);
   document.getElementById('modal-overlay').classList.add('open');
-}
-function editItem(type,id){openModal(type,id);}
-function deleteItem(type,id){
+};
+window.editItem = function(type,id){openModal(type,id);};
+window.deleteItem = async function(type,id){
   if(!confirm('¿Eliminar este registro?'))return;
-  data[type]=data[type].filter(x=>x.id!==id);save();closeModal();renderContent();
-}
+  data[type]=data[type].filter(x=>x.id!==id);
+  await deleteItemFromFS(type, id);
+  closeModal();renderContent();
+};
 
 function buildForm(type,item){
   const isEdit=!!item;
   const title={pipeline:'Oportunidad',projects:'Proyecto',tasks:'Tarea',contacts:'Contacto',financial:'Registro financiero',alliances:'Alianza'}[type];
   let fields='';
-
   if(type==='pipeline'){
     fields=`
-    <div class="fg"><label class="fl">Nombre de la oportunidad</label><input class="fc" id="f-name" value="${e(item?.name)}"></div>
+    <div class="fg"><label class="fl">Nombre de la oportunidad</label><input class="fc" id="f-name" value="${ee(item?.name)}"></div>
     <div class="form-row">
       <div class="fg"><label class="fl">Área</label><select class="fc" id="f-area">${AREAS.map(a=>`<option ${item?.area===a?'selected':''}>${a}</option>`).join('')}</select></div>
       <div class="fg"><label class="fl">Etapa</label><select class="fc" id="f-stage">${PSTAGES.map(s=>`<option ${item?.stage===s?'selected':''}>${s}</option>`).join('')}</select></div>
@@ -827,15 +1093,15 @@ function buildForm(type,item){
       <div class="fg"><label class="fl">Probabilidad %</label><input class="fc" id="f-prob" type="number" min="0" max="100" value="${item?.probability||''}"></div>
     </div>
     <div class="form-row">
-      <div class="fg"><label class="fl">Contacto</label><input class="fc" id="f-contact" value="${e(item?.contact)}"></div>
+      <div class="fg"><label class="fl">Contacto</label><input class="fc" id="f-contact" value="${ee(item?.contact)}"></div>
       <div class="fg"><label class="fl">Fecha cierre est.</label><input class="fc" id="f-close" type="date" value="${item?.closeDate||''}"></div>
     </div>
     <div class="fg"><label class="fl">Responsable</label><select class="fc" id="f-resp">${TEAM.map(m=>`<option ${item?.responsible===m?'selected':''}>${m}</option>`).join('')}</select></div>
-    <div class="fg"><label class="fl">Próximo paso</label><input class="fc" id="f-next" value="${e(item?.nextStep)}"></div>
-    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${e(item?.notes)}</textarea></div>`;
+    <div class="fg"><label class="fl">Próximo paso</label><input class="fc" id="f-next" value="${ee(item?.nextStep)}"></div>
+    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${ee(item?.notes)}</textarea></div>`;
   } else if(type==='projects'){
     fields=`
-    <div class="fg"><label class="fl">Nombre del proyecto</label><input class="fc" id="f-name" value="${e(item?.name)}"></div>
+    <div class="fg"><label class="fl">Nombre del proyecto</label><input class="fc" id="f-name" value="${ee(item?.name)}"></div>
     <div class="form-row">
       <div class="fg"><label class="fl">Área</label><select class="fc" id="f-area">${AREAS.map(a=>`<option ${item?.area===a?'selected':''}>${a}</option>`).join('')}</select></div>
       <div class="fg"><label class="fl">Estado</label><select class="fc" id="f-status">${PSTATUS.map(s=>`<option ${item?.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
@@ -848,11 +1114,11 @@ function buildForm(type,item){
       <div class="fg"><label class="fl">% Avance</label><input class="fc" id="f-prog" type="number" min="0" max="100" value="${item?.progress||0}"></div>
       <div class="fg"><label class="fl">Fecha objetivo</label><input class="fc" id="f-due" type="date" value="${item?.dueDate||''}"></div>
     </div>
-    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${e(item?.notes)}</textarea></div>`;
+    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${ee(item?.notes)}</textarea></div>`;
   } else if(type==='tasks'){
     const projects=[...new Set(data.projects.map(p=>p.name))];
     fields=`
-    <div class="fg"><label class="fl">Tarea</label><input class="fc" id="f-name" value="${e(item?.name)}"></div>
+    <div class="fg"><label class="fl">Tarea</label><input class="fc" id="f-name" value="${ee(item?.name)}"></div>
     <div class="form-row">
       <div class="fg"><label class="fl">Proyecto</label><select class="fc" id="f-proj"><option value="">Sin proyecto</option>${projects.map(p=>`<option ${item?.project===p?'selected':''}>${p}</option>`).join('')}</select></div>
       <div class="fg"><label class="fl">Responsable</label><select class="fc" id="f-resp">${TEAM.map(m=>`<option ${item?.responsible===m?'selected':''}>${m}</option>`).join('')}</select></div>
@@ -865,30 +1131,30 @@ function buildForm(type,item){
       <div class="fg"><label class="fl">Estado</label><select class="fc" id="f-status">${STASK.map(s=>`<option ${item?.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
       <div class="fg"><label class="fl">Fecha límite</label><input class="fc" id="f-due" type="date" value="${item?.dueDate||''}"></div>
     </div>
-    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${e(item?.notes)}</textarea></div>`;
+    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${ee(item?.notes)}</textarea></div>`;
   } else if(type==='contacts'){
     fields=`
     <div class="form-row">
-      <div class="fg"><label class="fl">Nombre</label><input class="fc" id="f-name" value="${e(item?.name)}"></div>
-      <div class="fg"><label class="fl">Organización</label><input class="fc" id="f-org" value="${e(item?.org)}"></div>
+      <div class="fg"><label class="fl">Nombre</label><input class="fc" id="f-name" value="${ee(item?.name)}"></div>
+      <div class="fg"><label class="fl">Organización</label><input class="fc" id="f-org" value="${ee(item?.org)}"></div>
     </div>
     <div class="form-row">
       <div class="fg"><label class="fl">Rol</label><select class="fc" id="f-role"><option>Directivo</option><option>Patrocinador</option><option>Proveedor</option><option>Aliado</option><option>Prospecto</option><option>Coach</option><option>Familia</option></select></div>
       <div class="fg"><label class="fl">Prioridad</label><select class="fc" id="f-pri">${PRIORITIES.map(p=>`<option ${item?.priority===p?'selected':''}>${p}</option>`).join('')}</select></div>
     </div>
     <div class="form-row">
-      <div class="fg"><label class="fl">Teléfono</label><input class="fc" id="f-phone" value="${e(item?.phone)}"></div>
-      <div class="fg"><label class="fl">Email</label><input class="fc" id="f-email" value="${e(item?.email)}"></div>
+      <div class="fg"><label class="fl">Teléfono</label><input class="fc" id="f-phone" value="${ee(item?.phone)}"></div>
+      <div class="fg"><label class="fl">Email</label><input class="fc" id="f-email" value="${ee(item?.email)}"></div>
     </div>
     <div class="form-row">
-      <div class="fg"><label class="fl">Proyecto relacionado</label><input class="fc" id="f-proj" value="${e(item?.project)}"></div>
+      <div class="fg"><label class="fl">Proyecto relacionado</label><input class="fc" id="f-proj" value="${ee(item?.project)}"></div>
       <div class="fg"><label class="fl">Último contacto</label><input class="fc" id="f-last" type="date" value="${item?.lastContact||''}"></div>
     </div>
-    <div class="fg"><label class="fl">Próximo paso</label><input class="fc" id="f-next" value="${e(item?.nextStep)}"></div>
-    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${e(item?.notes)}</textarea></div>`;
+    <div class="fg"><label class="fl">Próximo paso</label><input class="fc" id="f-next" value="${ee(item?.nextStep)}"></div>
+    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${ee(item?.notes)}</textarea></div>`;
   } else if(type==='financial'){
     fields=`
-    <div class="fg"><label class="fl">Concepto</label><input class="fc" id="f-name" value="${e(item?.concept)}"></div>
+    <div class="fg"><label class="fl">Concepto</label><input class="fc" id="f-name" value="${ee(item?.concept)}"></div>
     <div class="form-row">
       <div class="fg"><label class="fl">Línea</label><select class="fc" id="f-line">${AREAS.map(a=>`<option ${item?.line===a?'selected':''}>${a}</option>`).join('')}</select></div>
       <div class="fg"><label class="fl">Tipo</label><select class="fc" id="f-type"><option>Ingreso esperado</option><option>Ingreso cerrado</option><option>Egreso</option><option>Inversión</option></select></div>
@@ -898,38 +1164,48 @@ function buildForm(type,item){
       <div class="fg"><label class="fl">Estado</label><select class="fc" id="f-status"><option>Proyectado</option><option>Confirmado</option><option>Recibido</option><option>Perdido</option></select></div>
     </div>
     <div class="fg"><label class="fl">Fecha esperada</label><input class="fc" id="f-date" type="date" value="${item?.expectedDate||''}"></div>
-    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${e(item?.notes)}</textarea></div>`;
+    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${ee(item?.notes)}</textarea></div>`;
   } else if(type==='alliances'){
     fields=`
-    <div class="fg"><label class="fl">Organización</label><input class="fc" id="f-name" value="${e(item?.name)}"></div>
+    <div class="fg"><label class="fl">Organización</label><input class="fc" id="f-name" value="${ee(item?.name)}"></div>
     <div class="form-row">
       <div class="fg"><label class="fl">Tipo</label><select class="fc" id="f-type"><option>Universidad</option><option>Proveedor</option><option>Patrocinador</option><option>Aliado estratégico</option><option>Socio / Proveedor</option><option>Institución</option></select></div>
       <div class="fg"><label class="fl">Estado</label><select class="fc" id="f-status"><option>Activa</option><option>En negociación</option><option>Prospecto</option><option>Formalizada</option><option>Inactiva</option></select></div>
     </div>
     <div class="form-row">
-      <div class="fg"><label class="fl">Contacto clave</label><input class="fc" id="f-contact" value="${e(item?.contact)}"></div>
+      <div class="fg"><label class="fl">Contacto clave</label><input class="fc" id="f-contact" value="${ee(item?.contact)}"></div>
       <div class="fg"><label class="fl">Valor estratégico</label><select class="fc" id="f-value"><option>Crítico</option><option>Alto</option><option>Medio</option></select></div>
     </div>
-    <div class="fg"><label class="fl">Próximo movimiento</label><input class="fc" id="f-next" value="${e(item?.nextMove)}"></div>
-    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${e(item?.notes)}</textarea></div>`;
+    <div class="fg"><label class="fl">Próximo movimiento</label><input class="fc" id="f-next" value="${ee(item?.nextMove)}"></div>
+    <div class="fg"><label class="fl">Notas</label><textarea class="fc" id="f-notes">${ee(item?.notes)}</textarea></div>`;
   }
 
+  // Set correct selected values for selects that need matching
   const deleteBtn=isEdit?`<button type="button" class="btn btn-ghost" onclick="deleteItem('${type}',${item.id})" style="color:var(--red);border-color:var(--red)"><i class="ti ti-trash"></i> Eliminar</button>`:'';
-  return`
+  const formHtml=`
     <div class="modal-title">${isEdit?'Editar':'Nuevo'} ${title}</div>
     ${fields}
     <div class="modal-actions">
       ${deleteBtn}
       <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-      <button type="button" class="btn btn-primary" onclick="saveForm('${type}',${item?.id||'null'})"><i class="ti ti-check"></i> Guardar</button>
+      <button type="button" class="btn btn-primary" onclick="saveForm('${type}',${item?.id!=null?item.id:'null'})"><i class="ti ti-check"></i> Guardar</button>
     </div>`;
+  return formHtml;
 }
 
-function e(v){return(v||'').toString().replace(/"/g,'&quot;');}
+// after form renders, set correct select values
+function setSelectAfterRender(type, item){
+  if(!item) return;
+  const setVal = (id, val) => { const el=document.getElementById(id); if(el&&val!=null) el.value=val; };
+  if(type==='contacts') setVal('f-role', item.role);
+  if(type==='financial'){setVal('f-type', item.type); setVal('f-status', item.status);}
+  if(type==='alliances'){setVal('f-type', item.type); setVal('f-status', item.status); setVal('f-value', item.value);}
+}
 
+function ee(v){return(v||'').toString().replace(/"/g,'&quot;').replace(/</g,'&lt;');}
 function getVal(id){const el=document.getElementById(id);return el?el.value:'';}
 
-function saveForm(type,id){
+window.saveForm = async function(type,id){
   let obj={};
   if(type==='pipeline'){
     obj={name:getVal('f-name'),area:getVal('f-area'),stage:getVal('f-stage'),value:parseFloat(getVal('f-value'))||0,probability:parseFloat(getVal('f-prob'))||0,contact:getVal('f-contact'),closeDate:getVal('f-close'),responsible:getVal('f-resp'),nextStep:getVal('f-next'),notes:getVal('f-notes')};
@@ -944,22 +1220,51 @@ function saveForm(type,id){
   } else if(type==='alliances'){
     obj={name:getVal('f-name'),type:getVal('f-type'),status:getVal('f-status'),contact:getVal('f-contact'),value:getVal('f-value'),nextMove:getVal('f-next'),notes:getVal('f-notes')};
   }
+
   const nidMap={pipeline:'pi',projects:'p',tasks:'t',contacts:'c',financial:'f',alliances:'a'};
-  if(id&&id!==null){
-    const idx=data[type].findIndex(x=>x.id===id);
-    if(idx>-1)data[type][idx]={...data[type][idx],...obj};
+
+  if(id!==null && id!=='null' && id!==undefined){
+    const numId = typeof id === 'string' ? parseInt(id) : id;
+    const idx=data[type].findIndex(x=>x.id===numId);
+    if(idx>-1){
+      data[type][idx]={...data[type][idx],...obj};
+      await saveItem(type, data[type][idx]);
+    }
   } else {
     const nk=nidMap[type];
     obj.id=data.nid[nk]++;
     data[type].push(obj);
+    await saveItem(type, obj);
+    await saveNid();
   }
-  save();closeModal();renderContent();
-}
+  closeModal();renderContent();
+};
 
 // ======================================================
 // INIT
 // ======================================================
-load();render();
+async function init(){
+  try{
+    await seedIfEmpty();
+    await loadFromFirestore();
+    attachListeners();
+    initialized = true;
+
+    // Hide loading, show UI
+    document.getElementById('loading-screen').style.display='none';
+    document.getElementById('topbar').style.display='flex';
+    document.getElementById('main').style.display='block';
+
+    render();
+    syncDot('ok');
+  } catch(err){
+    console.error('Init error:', err);
+    document.querySelector('#loading-screen .sub').textContent = 'Error al conectar: '+err.message;
+    document.querySelector('#loading-screen .spinner').style.display='none';
+  }
+}
+
+init();
 </script>
 </body>
 </html>
