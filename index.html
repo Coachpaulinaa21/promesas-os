@@ -256,8 +256,7 @@ const DEFDATA = {
 // STATE
 // ======================================================
 let data = JSON.parse(JSON.stringify(DEFDATA));
-data._completedIds = new Set();
-data._rawMetaDocs = {};
+data._doneIds = new Set();  // IDs de tareas completadas: status/global/done
 let currentTab = 'dashboard';
 let unsubscribers = [];
 let focoDebounce = null;
@@ -364,54 +363,26 @@ async function loadFromFirestore(){
     data[col].forEach(item => { if(typeof item.id === 'string') item.id = parseInt(item.id)||item.id; });
   }
 
-  // Tareas desde proyecto secundario (promesas-tareas) — solo lectura
+  // Tareas desde promesas-tareas — solo lectura
+  // Estructura real: collection("tasks") campos: texto, resp, proj, prio
+  // Completadas: collection("status") doc("global") campo: done (array de IDs)
   try {
-    const [tasksSnap, ...metaSnaps] = await Promise.all([
+    const [tasksSnap, statusSnap] = await Promise.all([
       getDocs(collection(dbTasks, 'tasks')),
-      // Intentar leer posibles documentos donde se guardan IDs de completadas
-      getDoc(doc(dbTasks, 'meta', 'completadas')).catch(()=>null),
-      getDoc(doc(dbTasks, 'config', 'completadas')).catch(()=>null),
-      getDoc(doc(dbTasks, 'estado', 'completadas')).catch(()=>null),
-      getDoc(doc(dbTasks, 'meta', 'estado')).catch(()=>null),
-      getDoc(doc(dbTasks, 'meta', 'config')).catch(()=>null),
+      getDoc(doc(dbTasks, 'status', 'global'))
     ]);
     data.tasks = [];
-    tasksSnap.forEach(d => data.tasks.push({...d.data(), _fsId: d.id, _docId: d.id}));
-
-    // Recopilar set de IDs completadas de cualquier documento meta que exista
-    data._completedIds = new Set();
-    data._rawMetaDocs = {};
-    for(const ms of metaSnaps){
-      if(!ms || !ms.exists()) continue;
-      const md = ms.data();
-      data._rawMetaDocs[ms.ref.path] = md;
-      // El doc puede tener: {ids:[...]}, {completadas:[...]}, {done:[...]}, o {id1:true, id2:true}
-      const lists = [md.ids, md.completadas, md.done, md.completed, md.tachadas, md.lista];
-      for(const lst of lists){
-        if(Array.isArray(lst)) lst.forEach(id => data._completedIds.add(String(id)));
-      }
-      // También puede ser un mapa {docId: true}
-      Object.entries(md).forEach(([k,v])=>{
-        if(v===true) data._completedIds.add(String(k));
-      });
-    }
-
-    // DEBUG: log de estructura real para diagnóstico
-    if(data.tasks.length > 0){
-      console.group('%c[Promesas OS] Estructura real de tasks en Firestore', 'color:#FF6B2B;font-weight:bold');
-      console.log('Total documentos en tasks:', data.tasks.length);
-      console.log('Primer doc completo:', JSON.parse(JSON.stringify(data.tasks[0])));
-      if(data.tasks[1]) console.log('Segundo doc:', JSON.parse(JSON.stringify(data.tasks[1])));
-      console.log('Campos del primer doc:', Object.keys(data.tasks[0]).filter(k=>!k.startsWith('_')));
-      console.log('IDs de completadas encontradas en meta:', [...data._completedIds].slice(0,10));
-      console.log('Docs meta encontrados:', Object.keys(data._rawMetaDocs));
-      console.groupEnd();
+    tasksSnap.forEach(d => data.tasks.push({...d.data(), _docId: d.id}));
+    // Construir set de IDs completadas desde status/global/done
+    data._doneIds = new Set();
+    if(statusSnap.exists()){
+      const doneArr = statusSnap.data().done;
+      if(Array.isArray(doneArr)) doneArr.forEach(id => data._doneIds.add(String(id)));
     }
   } catch(e) {
-    console.warn('No se pudo cargar tasks desde promesas-tareas:', e.message);
+    console.warn('Error cargando tasks desde promesas-tareas:', e.message);
     data.tasks = [];
-    data._completedIds = new Set();
-    data._rawMetaDocs = {};
+    data._doneIds = new Set();
   }
 
   const brainSnap = await getDoc(doc(db,'meta','brain'));
@@ -447,41 +418,26 @@ function attachListeners(){
     unsubscribers.push(unsub);
   }
 
-  // Listener exclusivo de tareas desde promesas-tareas (solo lectura)
+  // Listener de tareas — promesas-tareas → collection("tasks")
   const unsubTasks = onSnapshot(collection(dbTasks, 'tasks'), snap => {
     if(!initialized) return;
     data.tasks = [];
-    snap.forEach(d => data.tasks.push({...d.data(), _fsId: d.id, _docId: d.id}));
-    if(currentTab==='tasks'||currentTab==='dashboard') renderContent();
+    snap.forEach(d => data.tasks.push({...d.data(), _docId: d.id}));
+    renderContent();
   }, err => console.warn('Listener tasks error:', err.message));
   unsubscribers.push(unsubTasks);
 
-  // Listeners de posibles documentos de completadas (varios paths posibles)
-  const completedPaths = [
-    ['meta','completadas'], ['config','completadas'], ['estado','completadas'],
-    ['meta','estado'], ['meta','config']
-  ];
-  for(const [col2, docId] of completedPaths){
-    const unsub2 = onSnapshot(doc(dbTasks, col2, docId), snap => {
-      if(!initialized) return;
-      if(!snap.exists()){ return; }
-      const md = snap.data();
-      if(!data._completedIds) data._completedIds = new Set();
-      if(!data._rawMetaDocs) data._rawMetaDocs = {};
-      data._rawMetaDocs[snap.ref.path] = md;
-      // Reconstruir el set completo desde todos los meta docs
-      data._completedIds = new Set();
-      Object.values(data._rawMetaDocs).forEach(d2 => {
-        const lists = [d2.ids, d2.completadas, d2.done, d2.completed, d2.tachadas, d2.lista];
-        for(const lst of lists){
-          if(Array.isArray(lst)) lst.forEach(id => data._completedIds.add(String(id)));
-        }
-        Object.entries(d2).forEach(([k,v])=>{ if(v===true) data._completedIds.add(String(k)); });
-      });
-      if(currentTab==='tasks'||currentTab==='dashboard') renderContent();
-    }, ()=>{}); // silenciar errores de docs que no existen
-    unsubscribers.push(unsub2);
-  }
+  // Listener de completadas — promesas-tareas → collection("status") doc("global") campo: done
+  const unsubStatus = onSnapshot(doc(dbTasks, 'status', 'global'), snap => {
+    if(!initialized) return;
+    data._doneIds = new Set();
+    if(snap.exists()){
+      const doneArr = snap.data().done;
+      if(Array.isArray(doneArr)) doneArr.forEach(id => data._doneIds.add(String(id)));
+    }
+    renderContent();
+  }, err => console.warn('Listener status/global error:', err.message));
+  unsubscribers.push(unsubStatus);
 
   // brain listener
   const unsubBrain = onSnapshot(doc(db,'meta','brain'), snap => {
@@ -662,8 +618,8 @@ window.go = function(tab){currentTab=tab;renderNav();renderContent();};
 // ======================================================
 function renderDashboard(){
   const tasks=data.tasks;
-  // Usa taskEsLista() para compatibilidad con sistema externo de tareas
-  const urgent=tasks.filter(t=>!taskEsLista(t)&&(t.priority==='Urgente'||/urgente/i.test(t.priority||t.prioridad||'')));
+  // Tareas urgentes del sistema externo: prioridad Alta y no completadas
+  const urgent=tasks.filter(t=>!taskEsLista(t)&&/^alta$/i.test(t.prio||''));
   const pipeline=data.pipeline.filter(p=>!p.stage.includes('Ganado')&&!p.stage.includes('Perdido'));
   const totalPot=pipeline.reduce((s,p)=>s+p.value,0);
   const totalPond=pipeline.reduce((s,p)=>s+(p.value*(p.probability/100)),0);
@@ -722,8 +678,8 @@ function renderDashboard(){
         <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
           <input type="checkbox" disabled style="accent-color:var(--accent);opacity:.6">
           <div style="flex:1;min-width:0">
-            <div style="font-size:12.5px;line-height:1.3">${taskNombre(t)}</div>
-            <div style="font-size:11px;color:var(--muted)">${ava(taskResp(t))} ${taskResp(t)||'—'}</div>
+            <div style="font-size:12.5px;line-height:1.3">${t.texto||'(sin nombre)'}</div>
+            <div style="font-size:11px;color:var(--muted)">${ava(t.resp||'')} ${t.resp||'—'}</div>
           </div>
         </div>`).join(''):`<div class="empty-state"><i class="ti ti-circle-check"></i>Sin urgentes 🎉</div>`}
     </div>
@@ -778,14 +734,7 @@ window.saveFoco = async function(v){
 
 // quickDone: visor solo — tareas solo lectura en Promesas OS
 window.quickDone = function(id){ renderContent(); };
-// Debug toggle para inspeccionar campos reales de Firestore
-window._showDebug = false;
-window.toggleDebug = function(){
-  window._showDebug = !window._showDebug;
-  const btn = document.getElementById('debug-btn');
-  if(btn) btn.textContent = window._showDebug ? '🔍 Ocultar campos' : '🔍 Ver campos';
-  renderContent();
-};
+
 
 // ======================================================
 // PIPELINE
@@ -892,77 +841,26 @@ ${proj.map(p=>`<div class="card" style="cursor:pointer;border-left:3px solid ${A
 // Promesas OS NO escribe en tasks. Solo lee y muestra.
 // ======================================================
 
-// ── Detecta si una tarea está completada
-// Estrategia 1: campo booleano directo en el documento
-// Estrategia 2: ID del doc en el Set _completedIds (doc separado de completadas)
-// Estrategia 3: campo status/estado con texto
+// ── Detecta si la tarea está completada
+// Estructura real: status/global/done = array de IDs de tareas completadas
 function taskEsLista(t){
-  // Campos booleanos directos (cualquiera que sea true)
-  const boolFields = ['completed','done','checked','tachada','completada','lista','finished'];
-  for(const f of boolFields){
-    if(t[f] === true) return true;
-  }
-  // ID en el set de completadas (estructura con doc separado)
-  const tid = String(t._docId || t._fsId || t.id || '');
-  if(tid && data._completedIds && data._completedIds.has(tid)) return true;
-  // Campo de texto
-  const s = (t.status || t.estado || t.estado_tarea || '').toString().toLowerCase().trim();
-  if(['lista','lista ✅','completada','done','complete','tachada','finished'].includes(s)) return true;
-  return false;
+  const id = String(t._docId || '');
+  return id !== '' && data._doneIds instanceof Set && data._doneIds.has(id);
 }
 
-// ── Nombre de la tarea — prueba todos los campos posibles en orden de probabilidad
-function taskNombre(t){
-  return t.texto       // campo más común en apps en español
-      || t.tarea
-      || t.nombre
-      || t.titulo
-      || t.name
-      || t.title
-      || t.text
-      || t.descripcion
-      || t.description
-      || '(sin nombre)';
-}
-
-// ── Responsable — prueba todos los campos posibles
-function taskResp(t){
-  return t.responsable    // campo más probable en app en español
-      || t.persona
-      || t.asignado
-      || t.asignadoA
-      || t.assignee
-      || t.responsible
-      || t.usuario
-      || t.user
-      || '';
-}
-
-// ── Prioridad — normaliza a Alta / Media / Normal
+// ── Campos reales: texto, resp, proj, prio
+function taskNombre(t)  { return t.texto || '(sin nombre)'; }
+function taskResp(t)    { return t.resp  || ''; }
+function taskProyecto(t){ return t.proj  || ''; }
 function taskPri(t){
-  const raw = (t.prioridad || t.priority || 'Normal').toString().trim();
-  if(/^alta$/i.test(raw) || /urgente/i.test(raw))  return 'Alta';
-  if(/^media$/i.test(raw))                          return 'Media';
-  if(/^baja$/i.test(raw))                           return 'Baja';
-  return 'Normal';
+  const raw = (t.prio || '').toString().trim();
+  if(/^alta$/i.test(raw)   || /urgente/i.test(raw)) return 'Alta';
+  if(/^media$/i.test(raw))                           return 'Media';
+  if(/^baja$/i.test(raw))                            return 'Baja';
+  if(/^normal$/i.test(raw))                          return 'Normal';
+  return raw || 'Normal';
 }
-const TASK_PRI_BADGE = { Alta:'bo', Media:'bg2', Normal:'bgray', Baja:'bgray', Urgente:'br' };
-
-// ── Proyecto / dependencia
-function taskProyecto(t){
-  return t.proyecto
-      || t.dependencia
-      || t.project
-      || t.dependency
-      || t.area
-      || t.categoria
-      || '';
-}
-
-// ── Tipo (Interno/Externo) — campo adicional que aparece en la UI del sistema
-function taskTipo(t){
-  return t.tipo || t.type || '';
-}
+const TASK_PRI_BADGE = { Alta:'bo', Media:'bg2', Baja:'bgray', Normal:'bgray', Urgente:'br' };
 
 function renderTasks(){
   let fResp='todos', fStatus='todos';
@@ -998,29 +896,10 @@ function renderTasks(){
   <span>✅ Tablero de Ejecución</span>
   <a href="https://coachpaulinaa21.github.io/Tareas-promesas/" target="_blank" class="btn btn-ghost btn-sm" style="text-decoration:none"><i class="ti ti-external-link"></i> Gestionar tareas</a>
 </div>
-<div style="background:var(--elevated);border:1px dashed var(--borderS);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted);margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:7px;flex-wrap:wrap">
-  <span style="display:flex;align-items:center;gap:7px">
-    <i class="ti ti-eye" style="font-size:14px;color:var(--accent)"></i>
-    Visor — <strong style="color:var(--text);margin:0 2px">${totalTasks}</strong> tareas · <strong style="color:var(--accent);margin:0 2px">${pendingCount}</strong> pendientes · <strong style="color:var(--green);margin:0 2px">${doneCount}</strong> listas
-  </span>
-  <button class="btn btn-ghost btn-sm" onclick="toggleDebug()" id="debug-btn" style="font-size:11px">🔍 Ver campos</button>
+<div style="background:var(--elevated);border:1px dashed var(--borderS);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted);margin-bottom:1rem;display:flex;align-items:center;gap:7px">
+  <i class="ti ti-eye" style="font-size:14px;color:var(--accent)"></i>
+  Visor estratégico — sincronizado en tiempo real desde <strong style="color:var(--text);margin:0 3px">promesas-tareas</strong> · <strong style="color:var(--text);margin:0 3px">${totalTasks}</strong> tareas · <strong style="color:var(--accent);margin:0 3px">${pendingCount}</strong> pendientes · <strong style="color:var(--green);margin:0 3px">${doneCount}</strong> listas
 </div>
-${data.tasks.length>0&&window._showDebug?`
-<div style="background:#0a0d1a;border:1px solid var(--borderS);border-radius:8px;padding:1rem;margin-bottom:1rem;font-size:11px;font-family:monospace;overflow-x:auto">
-  <div style="color:var(--accent);font-weight:700;margin-bottom:8px">🔍 Campos reales del primer documento en Firestore (promesas-tareas → tasks)</div>
-  <div style="color:var(--gold);margin-bottom:6px">Doc ID: ${data.tasks[0]._docId||data.tasks[0]._fsId||'?'}</div>
-  ${Object.entries(data.tasks[0]).filter(([k])=>!k.startsWith('_')).map(([k,v])=>`
-  <div style="display:flex;gap:12px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04)">
-    <span style="color:#9B7BFF;min-width:140px">${k}</span>
-    <span style="color:var(--text)">${JSON.stringify(v)}</span>
-    <span style="color:var(--muted)">(${typeof v})</span>
-  </div>`).join('')}
-  ${data._completedIds&&data._completedIds.size>0?`
-  <div style="margin-top:10px;color:var(--accent)">IDs completadas encontradas en docs meta: ${[...data._completedIds].slice(0,10).join(', ')}</div>`:''}
-  ${data._rawMetaDocs&&Object.keys(data._rawMetaDocs).length>0?`
-  <div style="margin-top:6px;color:var(--muted)">Docs meta leídos: ${Object.keys(data._rawMetaDocs).join(', ')}</div>`:`
-  <div style="margin-top:10px;color:var(--muted)">No se encontraron documentos meta con IDs de completadas</div>`}
-</div>`:''}
 <div class="filter-bar">
   <select class="fsel" id="t-resp-f" onchange="renderContent()">
     <option value="todos">Todos</option>
