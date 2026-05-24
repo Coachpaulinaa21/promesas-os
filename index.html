@@ -770,21 +770,35 @@ ${proj.map(p=>`<div class="card" style="cursor:pointer;border-left:3px solid ${A
 // ======================================================
 // TASKS — solo lectura desde Firestore (sistema externo)
 // Las tareas se gestionan en: https://coachpaulinaa21.github.io/Tareas-promesas/
+// Estado: si completed===true (o status==='Lista ✅') → "Lista", si no → "Pendiente"
 // ======================================================
+
+// Normaliza cualquier tarea del sistema externo a dos estados simples
+function taskEsLista(t){
+  return t.completed===true || t.status==='Lista ✅' || t.status==='Lista' || t.status==='Completada' || t.done===true;
+}
+function taskEstado(t){
+  return taskEsLista(t) ? 'Lista' : 'Pendiente';
+}
+
 function renderTasks(){
-  let fResp='todos',fPri='todos',fStatus='todos';
+  let fResp='todos', fStatus='todos';
   try{fResp=document.getElementById('t-resp-f')?.value||'todos';}catch(e){}
-  try{fPri=document.getElementById('t-pri-f')?.value||'todos';}catch(e){}
   try{fStatus=document.getElementById('t-status-f')?.value||'todos';}catch(e){}
 
   let tasks=[...data.tasks];
-  if(fResp!=='todos')tasks=tasks.filter(t=>t.responsible===fResp);
-  if(fPri!=='todos')tasks=tasks.filter(t=>t.priority===fPri);
-  if(fStatus!=='todos')tasks=tasks.filter(t=>t.status===fStatus);
-  const ord={Urgente:0,Alta:1,Media:2,Baja:3};
-  tasks.sort((a,b)=>(ord[a.priority]||9)-(ord[b.priority]||9));
-  const pending=tasks.filter(t=>t.status!=='Lista ✅');
-  const done=tasks.filter(t=>t.status==='Lista ✅');
+  if(fResp!=='todos') tasks=tasks.filter(t=>t.responsible===fResp);
+  if(fStatus==='Pendiente') tasks=tasks.filter(t=>!taskEsLista(t));
+  else if(fStatus==='Lista')  tasks=tasks.filter(t=> taskEsLista(t));
+
+  // Primero pendientes, luego listas
+  tasks.sort((a,b)=>{
+    const aL=taskEsLista(a)?1:0, bL=taskEsLista(b)?1:0;
+    return aL-bL;
+  });
+
+  const pending=tasks.filter(t=>!taskEsLista(t));
+  const done=tasks.filter(t=> taskEsLista(t));
 
   return`
 <div class="section-title">
@@ -800,40 +814,40 @@ function renderTasks(){
     <option value="todos">Todos</option>
     ${TEAM.map(m=>`<option value="${m}">${m}</option>`).join('')}
   </select>
-  <select class="fsel" id="t-pri-f" onchange="renderContent()">
-    <option value="todos">Prioridad</option>
-    ${PRIORITIES.map(p=>`<option value="${p}">${p}</option>`).join('')}
-  </select>
   <select class="fsel" id="t-status-f" onchange="renderContent()">
-    <option value="todos">Estado</option>
-    ${STASK.map(s=>`<option value="${s}">${s}</option>`).join('')}
+    <option value="todos">Todos los estados</option>
+    <option value="Pendiente">Pendiente</option>
+    <option value="Lista">Lista</option>
   </select>
   <span style="font-size:12px;color:var(--muted);margin-left:4px">${pending.length} pendientes · ${done.length} listas</span>
 </div>
 <div class="card">
 <div class="table-wrap">
 <table>
-<thead><tr><th style="width:28px"></th><th>Tarea</th><th>Proyecto</th><th>Resp.</th><th>Prioridad</th><th>Estado</th><th>Fecha</th></tr></thead>
+<thead><tr><th style="width:28px"></th><th>Tarea</th><th>Proyecto</th><th>Resp.</th><th>Estado</th><th>Fecha</th></tr></thead>
 <tbody>
-${tasks.length===0?`<tr><td colspan="7"><div class="empty-state"><i class="ti ti-checkbox"></i>No hay tareas con estos filtros</div></td></tr>`:''}
-${tasks.map(t=>`<tr style="${t.status==='Lista ✅'?'opacity:.45':''}">
-  <td><span class="dot ${t.status==='Lista ✅'?'dot-g':t.priority==='Urgente'?'dot-r':t.priority==='Alta'?'dot-o':'dot-gr'}"></span></td>
+${tasks.length===0?`<tr><td colspan="6"><div class="empty-state"><i class="ti ti-checkbox"></i>No hay tareas con estos filtros</div></td></tr>`:''}
+${tasks.map(t=>{
+  const lista=taskEsLista(t);
+  const estado=taskEstado(t);
+  const estadoBadge=lista?'<span class="badge bgreen">Lista</span>':'<span class="badge bgray">Pendiente</span>';
+  return`<tr style="${lista?'opacity:.45':''}">
+  <td><span class="dot ${lista?'dot-g':'dot-o'}"></span></td>
   <td>
-    <div style="font-size:13px;${t.status==='Lista ✅'?'text-decoration:line-through;color:var(--muted)':''}">${t.name}</div>
+    <div style="font-size:13px;${lista?'text-decoration:line-through;color:var(--muted)':''}">${t.name||t.text||t.title||'—'}</div>
     ${t.notes?`<div style="font-size:11px;color:var(--muted)">${t.notes}</div>`:''}
   </td>
   <td style="font-size:12px;color:var(--muted);max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.project||'—'}</td>
-  <td>${ava(t.responsible)}</td>
-  <td>${priBdg(t.priority)}</td>
-  <td>${stBdg(t.status)}</td>
-  <td>${dLeft(t.dueDate)||fDate(t.dueDate)}</td>
-</tr>`).join('')}
+  <td>${ava(t.responsible||t.assignee||'')}</td>
+  <td>${estadoBadge}</td>
+  <td>${dLeft(t.dueDate)||fDate(t.dueDate)||'—'}</td>
+</tr>`;
+}).join('')}
 </tbody>
 </table>
 </div>
 </div>`;
 }
-
 // ======================================================
 // CONTACTS
 // ======================================================
