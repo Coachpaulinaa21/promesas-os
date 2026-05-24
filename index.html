@@ -618,7 +618,7 @@ function renderDashboard(){
       <div class="card-header"><div class="ctitle">🔴 Urgente ahora</div><button class="btn btn-ghost btn-sm" onclick="go('tasks')">Ver todas</button></div>
       ${urgentList.length?urgentList.map(t=>`
         <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
-          <input type="checkbox" onchange="quickDone(${t.id})" style="accent-color:var(--accent);cursor:pointer">
+          <input type="checkbox" disabled style="accent-color:var(--accent);opacity:.6">
           <div style="flex:1;min-width:0">
             <div style="font-size:12.5px;line-height:1.3">${t.name}</div>
             <div style="font-size:11px;color:var(--muted)">${ava(t.responsible)} ${t.responsible} · ${dLeft(t.dueDate)||fDate(t.dueDate)}</div>
@@ -674,10 +674,8 @@ window.saveFoco = async function(v){
   }, 800);
 };
 
-window.quickDone = async function(id){
-  const t=data.tasks.find(x=>x.id===id);
-  if(t){t.status='Lista ✅'; await saveItem('tasks',t); renderContent();}
-};
+// quickDone: visor solo — tareas solo lectura en Promesas OS
+window.quickDone = function(id){ renderContent(); };
 
 // ======================================================
 // PIPELINE
@@ -770,13 +768,15 @@ ${proj.map(p=>`<div class="card" style="cursor:pointer;border-left:3px solid ${A
 }
 
 // ======================================================
-// TASKS
+// TASKS — solo lectura desde Firestore (sistema externo)
+// Las tareas se gestionan en: https://coachpaulinaa21.github.io/Tareas-promesas/
 // ======================================================
 function renderTasks(){
   let fResp='todos',fPri='todos',fStatus='todos';
   try{fResp=document.getElementById('t-resp-f')?.value||'todos';}catch(e){}
   try{fPri=document.getElementById('t-pri-f')?.value||'todos';}catch(e){}
   try{fStatus=document.getElementById('t-status-f')?.value||'todos';}catch(e){}
+
   let tasks=[...data.tasks];
   if(fResp!=='todos')tasks=tasks.filter(t=>t.responsible===fResp);
   if(fPri!=='todos')tasks=tasks.filter(t=>t.priority===fPri);
@@ -785,10 +785,15 @@ function renderTasks(){
   tasks.sort((a,b)=>(ord[a.priority]||9)-(ord[b.priority]||9));
   const pending=tasks.filter(t=>t.status!=='Lista ✅');
   const done=tasks.filter(t=>t.status==='Lista ✅');
+
   return`
 <div class="section-title">
   <span>✅ Tablero de Ejecución</span>
-  <button class="btn btn-primary btn-sm" onclick="openModal('tasks',null)"><i class="ti ti-plus"></i> Nueva tarea</button>
+  <a href="https://coachpaulinaa21.github.io/Tareas-promesas/" target="_blank" class="btn btn-ghost btn-sm" style="text-decoration:none"><i class="ti ti-external-link"></i> Gestionar tareas</a>
+</div>
+<div style="background:var(--elevated);border:1px dashed var(--borderS);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted);margin-bottom:1rem;display:flex;align-items:center;gap:7px">
+  <i class="ti ti-eye" style="font-size:14px;color:var(--accent)"></i>
+  Visor estratégico — sincronizado en tiempo real desde Firestore. Para crear o editar tareas usa el sistema operativo de tareas.
 </div>
 <div class="filter-bar">
   <select class="fsel" id="t-resp-f" onchange="renderContent()">
@@ -808,10 +813,11 @@ function renderTasks(){
 <div class="card">
 <div class="table-wrap">
 <table>
-<thead><tr><th style="width:32px"></th><th>Tarea</th><th>Proyecto</th><th>Resp.</th><th>Prioridad</th><th>Estado</th><th>Fecha</th><th style="width:32px"></th></tr></thead>
+<thead><tr><th style="width:28px"></th><th>Tarea</th><th>Proyecto</th><th>Resp.</th><th>Prioridad</th><th>Estado</th><th>Fecha</th></tr></thead>
 <tbody>
+${tasks.length===0?`<tr><td colspan="7"><div class="empty-state"><i class="ti ti-checkbox"></i>No hay tareas con estos filtros</div></td></tr>`:''}
 ${tasks.map(t=>`<tr style="${t.status==='Lista ✅'?'opacity:.45':''}">
-  <td><input type="checkbox" ${t.status==='Lista ✅'?'checked':''} onchange="toggleTask(${t.id})" style="accent-color:var(--accent);cursor:pointer"></td>
+  <td><span class="dot ${t.status==='Lista ✅'?'dot-g':t.priority==='Urgente'?'dot-r':t.priority==='Alta'?'dot-o':'dot-gr'}"></span></td>
   <td>
     <div style="font-size:13px;${t.status==='Lista ✅'?'text-decoration:line-through;color:var(--muted)':''}">${t.name}</div>
     ${t.notes?`<div style="font-size:11px;color:var(--muted)">${t.notes}</div>`:''}
@@ -821,23 +827,12 @@ ${tasks.map(t=>`<tr style="${t.status==='Lista ✅'?'opacity:.45':''}">
   <td>${priBdg(t.priority)}</td>
   <td>${stBdg(t.status)}</td>
   <td>${dLeft(t.dueDate)||fDate(t.dueDate)}</td>
-  <td>
-    <div style="display:flex;gap:4px">
-      <button class="btn-icon btn" onclick="editItem('tasks',${t.id})"><i class="ti ti-edit" style="font-size:13px"></i></button>
-      <button class="btn-icon btn" onclick="deleteItem('tasks',${t.id})" style="color:var(--red)"><i class="ti ti-trash" style="font-size:13px"></i></button>
-    </div>
-  </td>
 </tr>`).join('')}
 </tbody>
 </table>
 </div>
 </div>`;
 }
-
-window.toggleTask = async function(id){
-  const t=data.tasks.find(x=>x.id===id);
-  if(t){t.status=t.status==='Lista ✅'?'Por hacer':'Lista ✅'; await saveItem('tasks',t); renderContent();}
-};
 
 // ======================================================
 // CONTACTS
